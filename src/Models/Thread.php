@@ -81,6 +81,10 @@ class Thread extends Model implements Versionable
         'kind',
         'mode',
         'max_depth',
+        // The SERVER-DURABLE selected ROOT variant (TH-04, Ruling B). Root messages that are edits/regens
+        // of each other are siblings at the root with no parent row to hold a `selected_child_id`, so the
+        // thread holds the pointer to the selected first-message variant. Default = the newest root sibling.
+        'selected_root_id',
         'payload',
         'meta',
     ];
@@ -175,6 +179,23 @@ class Thread extends Model implements Versionable
             $payload['max_depth'] = $seeded;
             $thread->setAttribute('payload', $payload);
         });
+    }
+
+    // -------------------------------------------------------------------------
+    // Root-variant selection (TH-04, Ruling B) — the thread-level counterpart to
+    // a message's selected_child_id, for the parentless root siblings.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Explicitly SELECT a ROOT variant — repoint `selected_root_id` at `$messageId` (the root-message
+     * equivalent of {@see Message::selectChild()}). Root messages that are edits/regens of each other are
+     * SIBLINGS at the root with no parent row to hold the pointer, so the thread holds it. Server-durable,
+     * so the next assembled {@see Message::linearConversation()} walks from the chosen first-message
+     * variant (and its whole downstream chain).
+     */
+    public function selectRoot(string $messageId): void
+    {
+        $this->forceFill(['selected_root_id' => $messageId])->save();
     }
 
     // -------------------------------------------------------------------------

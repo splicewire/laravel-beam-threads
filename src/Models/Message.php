@@ -227,12 +227,24 @@ class Message extends Model
     /**
      * Append a SIBLING variant of this message (the shared edit/regen mechanism): a NEW immutable row under
      * the SAME lineage parent (`parent_id`), authored by `$participantId`, carrying `$payload`. The new
-     * sibling becomes this parent's SELECTED child (default = newest sibling): the parent's
-     * `selected_child_id` is repointed at it. Returns the persisted sibling.
+     * sibling becomes the SELECTED variant (default = newest sibling). Returns the persisted sibling.
+     *
+     * THE CONTENT WRITE GOES THROUGH beam-core's shared {@see ParticleWriter} — the SAME path as the initial
+     * message write (Ruling A): the lineage bindings (`schema_ref`/`thread_id`/`participant_id`/`parent_id`)
+     * are pre-set on the new instance, then the writer authorizes → VALIDATES `$payload` against the
+     * {@see ThreadMessageData} schema → persists via {@see fillFromSchemaPayload()} (which touches ONLY the
+     * `payload` column, leaving the pre-set lineage bindings intact) → emits ONE {@see BeamParticlePersisted}.
+     * So a malformed variant payload is REJECTED by validation, an unauthorized participant is BLOCKED, and
+     * one persist signal fires per variant. The originating row is NEVER mutated.
+     *
+     * The selection pointer is repointed AROUND the writer call, to the new (newest) sibling:
+     *  - NON-root (has a `parent_id`): repoint the shared parent's `selected_child_id`.
+     *  - ROOT (`parent_id` is null): root variants are siblings at the root with no parent row to hold the
+     *    pointer, so repoint the THREAD's `selected_root_id` (Ruling B / {@see Thread::selectRoot()}).
      *
      * An EDIT and a REGENERATE are the SAME operation at the substrate — both fork a sibling; the only
      * difference (human-edited vs re-driven content) is WHO authored it and what payload it carries. So
-     * {@see editInto()} / {@see regenerateInto()} both delegate here. The originating row is never mutated.
+     * {@see editInto()} / {@see regenerateInto()} both delegate here.
      *
      * @param  array<string, mixed>  $payload
      */
@@ -242,15 +254,24 @@ class Message extends Model
             'schema_ref' => static::SCHEMA_REF,
             'thread_id' => $this->getAttribute('thread_id'),
             'participant_id' => $participantId,
+            // Siblings share a parent: the new variant's parent_id is the edited row's parent_id.
             'parent_id' => $this->getAttribute('parent_id'),
-            'payload' => $payload,
         ]);
-        $sibling->save();
 
-        // Default selection = the newest sibling: repoint the shared parent's selected_child at it.
+        // Route the CONTENT through beam-core's write pipeline — authorize → validate → persist → emit —
+        // exactly like the initial message write. fillFromSchemaPayload() writes only the payload column,
+        // so the lineage bindings pre-set above are preserved through the write.
+        app(ParticleWriter::class)->write($sibling, $payload);
+
+        // Default selection = the newest sibling, repointed AROUND the writer:
         if ($this->getAttribute('parent_id') !== null) {
+            // Non-root: the shared parent holds the selected-child pointer.
             static::whereKey($this->getAttribute('parent_id'))
                 ->update(['selected_child_id' => $sibling->getKey()]);
+        } else {
+            // Root sibling: no parent row — the THREAD holds the selected-root pointer (Ruling B).
+            Thread::whereKey($this->getAttribute('thread_id'))
+                ->update(['selected_root_id' => $sibling->getKey()]);
         }
 
         return $sibling;
@@ -292,16 +313,23 @@ class Message extends Model
 
     /**
      * The canonical LINEAR conversation from this message as root — the root-walk following
-     * `selected_child_id` (PRD §2.5 / §2.7: the AI turn is assembled from THIS one path). Starts at `$this`
-     * and follows each row's SELECTED child until a leaf, yielding the one active path (never the full
-     * tree). Returns an ordered Collection of messages, root first.
+     * `selected_child_id` (PRD §2.5 / §2.7: the AI turn is assembled from THIS one path). Follows each row's
+     * SELECTED child until a leaf, yielding the one active path (never the full tree). Returns an ordered
+     * Collection of messages, root first.
+     *
+     * ROOT-VARIANT AWARE (Ruling B): when called on a ROOT message (`parent_id` is null), the walk does NOT
+     * blindly start at `$this` — it starts from the thread's SELECTED root variant (`thread.selected_root_id`,
+     * the currently-selected first-message variant). If `selected_root_id` is null it falls back to the
+     * sole/earliest root message. So switching `selected_root_id` switches which first-message variant (and
+     * its whole downstream chain) IS the canonical conversation. A non-root `$this` walks from itself as
+     * before.
      *
      * @return Collection<int, static>
      */
     public function linearConversation(): Collection
     {
         $path = new Collection;
-        $cursor = $this;
+        $cursor = $this->getAttribute('parent_id') === null ? $this->resolveSelectedRoot() : $this;
 
         while ($cursor !== null) {
             $path->push($cursor);
@@ -311,6 +339,34 @@ class Message extends Model
         }
 
         return $path;
+    }
+
+    /**
+     * Resolve the root message the linear walk should start from (Ruling B): the thread's selected root
+     * variant (`thread.selected_root_id`), or — when unset — the sole/earliest root message of this thread
+     * (`parent_id IS NULL`, oldest first), falling back to `$this` if neither resolves.
+     */
+    protected function resolveSelectedRoot(): static
+    {
+        $selectedRootId = Thread::query()
+            ->whereKey($this->getAttribute('thread_id'))
+            ->value('selected_root_id');
+
+        if ($selectedRootId !== null) {
+            $selected = static::query()->find($selectedRootId);
+            if ($selected !== null) {
+                return $selected;
+            }
+        }
+
+        $earliest = static::query()
+            ->where('thread_id', $this->getAttribute('thread_id'))
+            ->whereNull('parent_id')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->first();
+
+        return $earliest ?? $this;
     }
 
     /**
