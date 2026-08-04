@@ -11,7 +11,7 @@ use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Threads\Data\ThreadData;
-use Splicewire\Beam\Threads\Enums\ThreadKind;
+use Splicewire\Beam\Enums\ThreadKind;
 use Splicewire\Beam\Threads\Enums\ThreadMode;
 use Splicewire\Beam\Write\ParticleWriter;
 
