@@ -40,9 +40,9 @@ return [
     */
 
     'tables' => [
-        'threads' => 'threads',
-        'messages' => 'thread_messages',
-        'participants' => 'thread_participants',
+        'threads' => env('BEAM_THREADS_TABLE', 'threads'),
+        'messages' => env('BEAM_THREAD_MESSAGES_TABLE', 'thread_messages'),
+        'participants' => env('BEAM_THREAD_PARTICIPANTS_TABLE', 'thread_participants'),
     ],
 
     /*
