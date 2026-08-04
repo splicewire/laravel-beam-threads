@@ -34,15 +34,24 @@ return [
     | Table names
     |--------------------------------------------------------------------------
     |
-    | The particle table-prefix seam. A host repoints these to prefixed names when it
-    | composes beam-threads alongside other particles.
+    | The particle table-prefix seam. A host repoints these when it composes
+    | beam-threads alongside other particles.
+    |
+    | TRANSITIONAL DEFAULT (threads-substrate build): the legacy ChatBase owns the
+    | unprefixed `threads` table (tower tenant migration create_chats_table) and stays
+    | live until the AI-driver rebind (TH-08) and ChatBase retirement (TH-07). To let
+    | the new particle coexist with the incumbent without a duplicate-table collision,
+    | the substrate defaults to the `beam_`-prefixed names during the build. TH-07,
+    | when it drops the legacy `threads` table, renames these to the canonical
+    | unprefixed forms (`threads`/`thread_messages`/`thread_participants`) as the final
+    | cutover. Overridable via env in the meantime.
     |
     */
 
     'tables' => [
-        'threads' => env('BEAM_THREADS_TABLE', 'threads'),
-        'messages' => env('BEAM_THREAD_MESSAGES_TABLE', 'thread_messages'),
-        'participants' => env('BEAM_THREAD_PARTICIPANTS_TABLE', 'thread_participants'),
+        'threads' => env('BEAM_THREADS_TABLE', 'beam_threads'),
+        'messages' => env('BEAM_THREAD_MESSAGES_TABLE', 'beam_thread_messages'),
+        'participants' => env('BEAM_THREAD_PARTICIPANTS_TABLE', 'beam_thread_participants'),
     ],
 
     /*
