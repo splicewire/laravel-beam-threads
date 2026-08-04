@@ -16,6 +16,7 @@ use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Threads\Data\ThreadMessageData;
 use Splicewire\Beam\Threads\Enums\SegmentKind;
+use Splicewire\Beam\Threads\Turns\TurnService;
 use Splicewire\Beam\Write\ParticleWriter;
 
 /**
@@ -275,6 +276,46 @@ class Message extends Model
         }
 
         return $sibling;
+    }
+
+    /**
+     * Append a CHILD message that EXTENDS the conversation from this leaf (threads-substrate PRD §2.7,
+     * ADR-0175 §5) — the turn-completion write. UNLIKE {@see appendSibling()} (a variant of the SAME
+     * message under a shared parent), a child is the NEXT message in the linear path: its `parent_id` is
+     * THIS message's key, and THIS message's `selected_child_id` is repointed at it so the new message
+     * becomes the selected continuation ({@see linearConversation()} now walks through it).
+     *
+     * The CONTENT WRITE GOES THROUGH beam-core's shared {@see ParticleWriter} — the SAME path as
+     * {@see appendSibling()} and the initial write (Ruling A): the lineage bindings
+     * (`schema_ref`/`thread_id`/`participant_id`/`parent_id`) are pre-set, then the writer authorizes →
+     * VALIDATES `$payload` against {@see ThreadMessageData} → persists via {@see fillFromSchemaPayload()}
+     * (payload column only, bindings preserved) → emits ONE {@see BeamParticlePersisted}. The agent's reply
+     * is NEVER raw-saved.
+     *
+     * A turn's completed content is authored by the AGENT participant (`$participantId`) — the substrate
+     * ({@see TurnService}) owns this write; the driver persists nothing.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function appendChild(string $participantId, array $payload): static
+    {
+        $child = new static([
+            'schema_ref' => static::SCHEMA_REF,
+            'thread_id' => $this->getAttribute('thread_id'),
+            'participant_id' => $participantId,
+            // A child EXTENDS the path: its parent is THIS leaf (not this leaf's parent).
+            'parent_id' => $this->getKey(),
+        ]);
+
+        // Route the CONTENT through beam-core's write pipeline — authorize → validate → persist → emit —
+        // exactly like appendSibling(). fillFromSchemaPayload() touches only the payload column, so the
+        // pre-set lineage bindings survive the write.
+        app(ParticleWriter::class)->write($child, $payload);
+
+        // Repoint THIS leaf's selected child at the new message so it becomes the selected continuation.
+        $this->forceFill(['selected_child_id' => $child->getKey()])->save();
+
+        return $child;
     }
 
     /**
