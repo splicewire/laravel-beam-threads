@@ -1,5 +1,10 @@
 <?php
 
+use Splicewire\Beam\Threads\Models\Participant\ExternalParticipant;
+use Splicewire\Beam\Threads\Models\Participant\SystemParticipant;
+use Splicewire\Beam\Threads\Models\Participant\UserParticipant;
+use Splicewire\Beam\Threads\Models\Participant\VisitorParticipant;
+
 return [
 
     /*
@@ -68,10 +73,32 @@ return [
     */
 
     'morph_map' => [
-        'user' => \Splicewire\Beam\Threads\Models\Participant\UserParticipant::class,
-        'visitor' => \Splicewire\Beam\Threads\Models\Participant\VisitorParticipant::class,
-        'system' => \Splicewire\Beam\Threads\Models\Participant\SystemParticipant::class,
-        'external' => \Splicewire\Beam\Threads\Models\Participant\ExternalParticipant::class,
+        'user' => UserParticipant::class,
+        'visitor' => VisitorParticipant::class,
+        'system' => SystemParticipant::class,
+        'external' => ExternalParticipant::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sidecar models (media + embeddings)
+    |--------------------------------------------------------------------------
+    |
+    | A message's media (Spatie MediaLibrary) and embeddings (pgvector) stay SIDECAR
+    | (ADR-0174 §2): they physically cannot live in the JSON payload — file storage /
+    | vector index — so they are stored OUTSIDE the payload in the host's own tables and
+    | merely SURFACED through the message `references` projection.
+    |
+    | beam-threads is AI-free and tier-clean: it ships NO Spatie/pgvector dependency and
+    | can't reach the tower `Embedding` model, so the concrete sidecar model classes are
+    | HOST-bound here (the participant-morph-map pattern). Left NULL, the sidecar morphMany
+    | relations resolve to an empty association — the seam exists, the host wires the models.
+    |
+    */
+
+    'sidecar' => [
+        'media_model' => env('BEAM_THREADS_MEDIA_MODEL'),
+        'embedding_model' => env('BEAM_THREADS_EMBEDDING_MODEL'),
     ],
 
 ];

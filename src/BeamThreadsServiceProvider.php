@@ -4,6 +4,10 @@ namespace Splicewire\Beam\Threads;
 
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
+use Splicewire\Beam\Threads\Models\Participant\ExternalParticipant;
+use Splicewire\Beam\Threads\Models\Participant\SystemParticipant;
+use Splicewire\Beam\Threads\Models\Participant\UserParticipant;
+use Splicewire\Beam\Threads\Models\Participant\VisitorParticipant;
 
 /**
  * The generic multi-participant threads particle provider (threads-substrate ticket TH-01).
@@ -62,17 +66,17 @@ class BeamThreadsServiceProvider extends ServiceProvider
             // A first-class authenticated account participant. Resolved from config so a host can point
             // this at its own user model; the placeholder default is the future beam-threads participant
             // concrete (lands in a later ticket).
-            'user' => config('beam.threads.morph_map.user', \Splicewire\Beam\Threads\Models\Participant\UserParticipant::class),
+            'user' => config('beam.threads.morph_map.user', UserParticipant::class),
 
             // An anonymous / pre-auth visitor participant (mirrors beam-embed's Visitor identity).
-            'visitor' => config('beam.threads.morph_map.visitor', \Splicewire\Beam\Threads\Models\Participant\VisitorParticipant::class),
+            'visitor' => config('beam.threads.morph_map.visitor', VisitorParticipant::class),
 
             // A non-human system/automation participant (notices, state transitions, integrations) — a
             // deterministic, non-AI actor.
-            'system' => config('beam.threads.morph_map.system', \Splicewire\Beam\Threads\Models\Participant\SystemParticipant::class),
+            'system' => config('beam.threads.morph_map.system', SystemParticipant::class),
 
             // A participant identified by an out-of-band external reference (a foreign system's actor).
-            'external' => config('beam.threads.morph_map.external', \Splicewire\Beam\Threads\Models\Participant\ExternalParticipant::class),
+            'external' => config('beam.threads.morph_map.external', ExternalParticipant::class),
 
             // NOTE: the AI-driver participant alias is intentionally NOT bound here — the tower tier binds
             // it in ticket 08. beam-threads is AI-free.
