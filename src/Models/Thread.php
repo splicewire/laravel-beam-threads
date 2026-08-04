@@ -13,6 +13,8 @@ use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Threads\Data\ThreadData;
 use Splicewire\Beam\Threads\Enums\ThreadMode;
+use Splicewire\Beam\Threads\Transitions\ReModeOutcome;
+use Splicewire\Beam\Threads\Transitions\ThreadModeLocked;
 use Splicewire\Beam\Write\ParticleWriter;
 
 /**
@@ -85,6 +87,10 @@ class Thread extends Model implements Versionable
         // of each other are siblings at the root with no parent row to hold a `selected_child_id`, so the
         // thread holds the pointer to the selected first-message variant. Default = the newest root sibling.
         'selected_root_id',
+        // The SPIN-OFF origin pointer (TH-06, ADR-0176 §4) — the SOURCE message (in ANOTHER thread) this
+        // thread was spun off from ("forum post → open a chat"). The ONLY thread-to-thread link; a soft
+        // uuid pointer set once at spin-off creation, null on an ordinary thread.
+        'origin_message_id',
         'payload',
         'meta',
     ];
@@ -196,6 +202,179 @@ class Thread extends Model implements Versionable
     public function selectRoot(string $messageId): void
     {
         $this->forceFill(['selected_root_id' => $messageId])->save();
+    }
+
+    // -------------------------------------------------------------------------
+    // Mode TRANSITIONS (TH-06, PRD §2.8, ADR-0176 §4) — spin-off + re-mode-in-place.
+    // A thread is mode-INVARIANT: mode is a RENDER pivot over ONE message series, not
+    // a storage fork. So both transitions go THROUGH the shared ParticleWriter (the
+    // thread payload write path — authorize → validate → persist → emit), and NEITHER
+    // rewrites message rows. Spin-off spawns a new thread; re-mode flips this thread's
+    // `mode` LOSSLESSLY.
+    // -------------------------------------------------------------------------
+
+    /**
+     * SPIN-OFF a NEW, independent thread from a SOURCE message (PRD §2.8, ADR-0176 §4) — the
+     * "forum post → open a chat" case. Spawns a fresh thread (through the shared {@see ParticleWriter},
+     * exactly like any other thread write) carrying `origin_message_id = $source->id` — a soft pointer back
+     * to the source message in ANOTHER thread. This is the ONLY thread-to-thread link (thread-to-thread
+     * parent-child nesting is deliberately NOT first-class, ADR-0176 §3).
+     *
+     * The new thread is FULLY INDEPENDENT: its own id, its own (later-added) participants and messages. The
+     * SOURCE thread and the SOURCE message are UNTOUCHED — spin-off reads the source's id and writes nothing
+     * back to it.
+     *
+     * The content write is routed through the writer: the `schema_ref` + `origin_message_id` bindings are
+     * pre-set on the new instance, then the writer authorizes → VALIDATES the {@see ThreadData} payload →
+     * persists via {@see fillFromSchemaPayload()} (payload column + mirrored axes; the pre-set
+     * `origin_message_id` binding survives) → emits one persist signal. `mode` seeds the new thread's
+     * creation-time default `max_depth` as usual unless `$maxDepth` is given.
+     *
+     * @param  Message  $source  the source message this thread is spun off from
+     * @param  array<string, mixed>  $config  neutral freeform config bag for the new thread
+     */
+    public static function spinOffFrom(
+        Message $source,
+        ThreadMode $mode,
+        ThreadKind $kind = ThreadKind::Interactive,
+        ?int $maxDepth = null,
+        array $config = [],
+        ?string $membership = null,
+    ): static {
+        $thread = new static([
+            'schema_ref' => static::SCHEMA_REF,
+            // The soft pointer back to the source message — pre-set BEFORE the write; fillFromSchemaPayload()
+            // touches only payload + mirrored axes, so this binding is preserved through the writer.
+            'origin_message_id' => $source->getKey(),
+        ]);
+
+        $payload = (new ThreadData(
+            kind: $kind,
+            mode: $mode,
+            max_depth: $maxDepth,
+            config: $config,
+            membership: $membership,
+        ))->toArray();
+
+        return app(ParticleWriter::class)->write($thread, $payload);
+    }
+
+    /**
+     * RE-MODE this thread IN PLACE (PRD §2.8, ADR-0176 §4) — flip `mode` LOSSLESSLY. The substrate is
+     * mode-invariant: `mode` is a RENDER pivot over ONE uniform message series, never a storage fork. So this
+     * updates ONLY the thread's `mode` (and recomputes the render-time `max_depth` default for the new mode)
+     * and re-renders the SAME message rows — it NEVER rewrites a single message row.
+     *
+     * LOSSLESS through the writer: the update goes THROUGH the shared {@see ParticleWriter} as a THREAD
+     * payload write (a new {@see ThreadData} with only `mode`/`max_depth` changed, everything else carried
+     * over) — authorize → validate → persist → emit. Because messages are a SEPARATE particle stream in a
+     * SEPARATE table (`thread_id`-referenced, never folded into the thread payload), a thread payload write
+     * PHYSICALLY CANNOT touch message rows. So `reply_to_id`/`parent_id` and every message payload byte
+     * SURVIVE a `forum→chat` collapse (the nesting data stays in the rows), and a flip-BACK (`chat→forum`)
+     * RESTORES the nesting render — because it was never destroyed, only re-capped at render time.
+     *
+     * GUARD (a): a thread LOCKED to its authored mode (`embed_template`/`embed_session`) REJECTS the re-mode
+     * (throws {@see ThreadModeLocked}) — an embed's mode is its published contract.
+     *
+     * GUARD (b): a re-mode that TIGHTENS the render cap below the actual reply nesting (e.g. `forum→chat`,
+     * where chat's `max_depth = 1` hides `reply_to` chains deeper than 1) is ALLOWED but FLAGGED. The data is
+     * untouched (the rows still hold every reply edge); the returned {@see ReModeOutcome} carries the deepest
+     * orphaned depth so the caller can badge it. Never a block.
+     *
+     * @return ReModeOutcome the (always-successful) outcome; {@see ReModeOutcome::orphansNesting()} flags guard (b)
+     *
+     * @throws ThreadModeLocked when this thread's kind locks it to its authored mode (guard (a))
+     */
+    public function reMode(ThreadMode $newMode): ReModeOutcome
+    {
+        $kind = $this->getAttribute('kind');
+
+        // Guard (a): embeds are locked to their authored mode — reject the re-mode outright.
+        if ($kind === ThreadKind::EmbedTemplate || $kind === ThreadKind::EmbedSession) {
+            throw new ThreadModeLocked($kind);
+        }
+
+        $from = $this->getAttribute('mode');
+        // The new render cap = the new mode's default. This is a RENDER-time cap recompute, not a message write.
+        $newMaxDepth = $newMode->defaultMaxDepth();
+
+        // Guard (b): does the NEW cap hide reply nesting the rows still hold? Measure the deepest reply chain
+        // present BEFORE the write; if the new cap can't render it, flag (but never block) — data is untouched.
+        $orphanedDepth = $this->orphanedReplyDepthUnder($newMaxDepth);
+
+        // Route the payload update THROUGH the writer — a THREAD payload write, only mode/max_depth changed.
+        // Everything else on the payload is carried over so the write is a pure re-mode, not a reset.
+        $current = (array) ($this->getAttribute('payload') ?? []);
+        $current['mode'] = $newMode->value;
+        $current['max_depth'] = $newMaxDepth;
+
+        app(ParticleWriter::class)->write($this, $current);
+
+        return new ReModeOutcome(
+            from: $from instanceof ThreadMode ? $from : $newMode,
+            to: $newMode,
+            newMaxDepth: $newMaxDepth,
+            orphanedDepth: $orphanedDepth,
+        );
+    }
+
+    /**
+     * Guard (b) measurement: the DEEPEST reply-nesting level in this thread's messages that a render cap of
+     * `$cap` would NO LONGER render — or null when nothing is hidden (or the cap is unbounded).
+     *
+     * The reply tree ({@see Message::replyTree()}) renders replies from depth 1 down to `cap` levels; a reply
+     * at depth `> cap` is beyond the cap. So this walks the `reply_to_id` chains, finds the maximum depth
+     * present, and returns it when it EXCEEDS `$cap` (the deepest level now orphaned). A null `$cap` (unbounded,
+     * e.g. re-mode TO forum) never orphans. Reads the messages table directly (tolerating its absence).
+     */
+    protected function orphanedReplyDepthUnder(?int $cap): ?int
+    {
+        if ($cap === null) {
+            return null; // unbounded render cap — nothing is ever hidden.
+        }
+
+        $maxDepth = $this->deepestReplyDepth();
+
+        return $maxDepth > $cap ? $maxDepth : null;
+    }
+
+    /**
+     * The deepest `reply_to_id` nesting level present in this thread's messages (0 = no replies, 1 = a direct
+     * reply, N = an N-deep reply chain). Computed by walking the reply edges in memory. Tolerates a missing
+     * messages table (returns 0) so it is always safe to call.
+     */
+    protected function deepestReplyDepth(): int
+    {
+        $table = config('beam.threads.tables.messages', 'thread_messages');
+
+        if ($this->getKey() === null || ! $this->getConnection()->getSchemaBuilder()->hasTable($table)) {
+            return 0;
+        }
+
+        // Load (id ⇒ reply_to_id) for every message in this thread. A row's reply depth is the number of
+        // `reply_to_id` hops from it up to a root (a message replying to nothing). Root post = depth 0, a
+        // direct reply = depth 1, an N-deep reply chain = depth N.
+        $parentOf = $this->getConnection()->table($table)
+            ->where('thread_id', $this->getKey())
+            ->pluck('reply_to_id', 'id')
+            ->all();
+
+        $deepest = 0;
+        foreach (array_keys($parentOf) as $id) {
+            $depth = 0;
+            $cursor = $parentOf[$id] ?? null;
+            $seen = [];
+            // Follow the reply_to chain to its root, counting hops (cycle-guarded, and stopping if the chain
+            // points outside this thread's loaded set).
+            while ($cursor !== null && ! isset($seen[$cursor]) && array_key_exists($cursor, $parentOf)) {
+                $depth++;
+                $seen[$cursor] = true;
+                $cursor = $parentOf[$cursor];
+            }
+            $deepest = max($deepest, $depth);
+        }
+
+        return $deepest;
     }
 
     // -------------------------------------------------------------------------
