@@ -97,13 +97,13 @@ class Thread extends Model implements Versionable
     }
 
     /**
-     * The thread table — the config table-prefix seam ({@see config('threads.tables.threads')}). A
+     * The thread table — the config table-prefix seam ({@see config('beam.threads.tables.threads')}). A
      * property default cannot call config(), so it is resolved here, mirroring how beam particles resolve
      * their prefixed table name.
      */
     public function getTable(): string
     {
-        return config('threads.tables.threads', 'threads');
+        return config('beam.threads.tables.threads', 'threads');
     }
 
     /**
@@ -194,7 +194,7 @@ class Thread extends Model implements Versionable
     public function messageCount(): int
     {
         return $this->derivedFactCache['message_count'] ??= $this->countRelated(
-            config('threads.tables.messages', 'thread_messages'),
+            config('beam.threads.tables.messages', 'thread_messages'),
         );
     }
 
@@ -205,7 +205,7 @@ class Thread extends Model implements Versionable
     public function participantCount(): int
     {
         return $this->derivedFactCache['participant_count'] ??= $this->countRelated(
-            config('threads.tables.participants', 'thread_participants'),
+            config('beam.threads.tables.participants', 'thread_participants'),
         );
     }
 
@@ -238,7 +238,7 @@ class Thread extends Model implements Versionable
 
     protected function computeLastActivityAt(): ?string
     {
-        $table = config('threads.tables.messages', 'thread_messages');
+        $table = config('beam.threads.tables.messages', 'thread_messages');
 
         if ($this->getKey() !== null && $this->getConnection()->getSchemaBuilder()->hasTable($table)) {
             $latest = $this->getConnection()->table($table)

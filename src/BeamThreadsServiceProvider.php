@@ -24,13 +24,14 @@ use Illuminate\Support\ServiceProvider;
  *     pass (loadMigrationsFrom) and the Stancl `tenants:migrate` pass (a `--path` push onto the
  *     tenancy migration parameters), because a thread's tables are ubiquitous (central + every
  *     tenant). Empty for now; the mechanism is wired so a later ticket only drops files in.
- *  3. The `config/threads.php` table-prefix + driver seam.
+ *  3. The `config/beam/threads.php` table-prefix + driver seam (beam-family convention: config ships
+ *     under `config/beam/` and merges under the `beam.threads` key, like beam.taxonomy / beam.ux).
  */
 class BeamThreadsServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/threads.php', 'threads');
+        $this->mergeConfigFrom(__DIR__.'/../config/beam/threads.php', 'beam.threads');
     }
 
     public function boot(): void
@@ -61,17 +62,17 @@ class BeamThreadsServiceProvider extends ServiceProvider
             // A first-class authenticated account participant. Resolved from config so a host can point
             // this at its own user model; the placeholder default is the future beam-threads participant
             // concrete (lands in a later ticket).
-            'user' => config('threads.morph_map.user', \Splicewire\Beam\Threads\Models\Participant\UserParticipant::class),
+            'user' => config('beam.threads.morph_map.user', \Splicewire\Beam\Threads\Models\Participant\UserParticipant::class),
 
             // An anonymous / pre-auth visitor participant (mirrors beam-embed's Visitor identity).
-            'visitor' => config('threads.morph_map.visitor', \Splicewire\Beam\Threads\Models\Participant\VisitorParticipant::class),
+            'visitor' => config('beam.threads.morph_map.visitor', \Splicewire\Beam\Threads\Models\Participant\VisitorParticipant::class),
 
             // A non-human system/automation participant (notices, state transitions, integrations) — a
             // deterministic, non-AI actor.
-            'system' => config('threads.morph_map.system', \Splicewire\Beam\Threads\Models\Participant\SystemParticipant::class),
+            'system' => config('beam.threads.morph_map.system', \Splicewire\Beam\Threads\Models\Participant\SystemParticipant::class),
 
             // A participant identified by an out-of-band external reference (a foreign system's actor).
-            'external' => config('threads.morph_map.external', \Splicewire\Beam\Threads\Models\Participant\ExternalParticipant::class),
+            'external' => config('beam.threads.morph_map.external', \Splicewire\Beam\Threads\Models\Participant\ExternalParticipant::class),
 
             // NOTE: the AI-driver participant alias is intentionally NOT bound here — the tower tier binds
             // it in ticket 08. beam-threads is AI-free.
@@ -82,7 +83,7 @@ class BeamThreadsServiceProvider extends ServiceProvider
     {
         if ($this->app->runningInConsole()) {
             $this->publishes([
-                __DIR__.'/../config/threads.php' => $this->app->configPath('threads.php'),
+                __DIR__.'/../config/beam/threads.php' => $this->app->configPath('beam/threads.php'),
             ], 'beam-threads-config');
         }
     }
@@ -98,12 +99,12 @@ class BeamThreadsServiceProvider extends ServiceProvider
      *
      * The dir is EMPTY today (a shell — no tables ship yet). The wiring is established so a later ticket
      * that homes the thread tables only drops migration files into `shared/`; both passes pick them up
-     * with no further provider edit. Gated by `config('threads.register_migrations', true)` so a host that
+     * with no further provider edit. Gated by `config('beam.threads.register_migrations', true)` so a host that
      * vendors the tables elsewhere can turn it off.
      */
     protected function bootMigrations(): void
     {
-        if (! config('threads.register_migrations', true)) {
+        if (! config('beam.threads.register_migrations', true)) {
             return;
         }
 
