@@ -1,0 +1,79 @@
+{
+    "name": "splicewire/laravel-beam-threads",
+    "description": "The generic multi-participant threads particle: schema-typed, snapshot-versioned conversation threads on beam-core, participant-agnostic and AI-free by construction. Free-tier arm of the Beam family (ADR-0138 / ADR-0092); depends DOWN on beam-core + the data-schemas foundation, never onto tower/satellite.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.2",
+        "illuminate/contracts": "^11.0|^12.0|^13.0",
+        "illuminate/database": "^11.0|^12.0|^13.0",
+        "illuminate/http": "^11.0|^12.0|^13.0",
+        "illuminate/support": "^11.0|^12.0|^13.0",
+        "splicewire/laravel-beam": "*",
+        "schemastud/laravel-data-schemas": "*"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.0",
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "pestphp/pest": "^2.0|^3.0",
+        "phpunit/phpunit": "^11.0|^12.0",
+        "wikimedia/composer-merge-plugin": "^2.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Splicewire\\Beam\\Threads\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Splicewire\\Beam\\Threads\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "package-topology": {
+            "because": "beam-threads is a beam-family package: it depends DOWN on beam-core + the data-schemas foundation and must never require the tower/satellite tiers it is consumed by, nor any AI vendor (the AI-driver participant is bound by the tower tier, not here)",
+            "mustRequire": [
+                "splicewire/laravel-beam",
+                "schemastud/laravel-data-schemas"
+            ],
+            "downOnly": [
+                "splicewire/laravel-beam"
+            ],
+            "mustNotRequire": [
+                "splicewire/tower*",
+                "splicewire/laravel-tower-*",
+                "splicewire/laravel-satellite*",
+                "prism*",
+                "prism-php/*",
+                "laravel/mcp",
+                "anthropic*",
+                "openai*"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        },
+        "laravel": {
+            "providers": [
+                "Splicewire\\Beam\\Threads\\BeamThreadsServiceProvider"
+            ]
+        },
+        "merge-plugin": {
+            "include": [
+                "composer.local.json"
+            ]
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "wikimedia/composer-merge-plugin": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "scripts": {
+        "pint": "@php -d memory_limit=512M vendor/bin/pint",
+        "test": "@php vendor/bin/phpunit"
+    }
+}
