@@ -14,6 +14,7 @@ use Spatie\ModelFlags\Models\Concerns\HasFlags;
 use Spatie\ModelStatus\HasStatuses;
 use Spatie\SchemalessAttributes\Casts\SchemalessAttributes;
 use Splicewire\Beam\Threads\Enums\ThreadKind;
+use Splicewire\Beam\Threads\Models\Message;
 
 /**
  * The generic conversation particle (recohere T02, TH-07): the verified-generic `threads` machinery —
@@ -41,9 +42,9 @@ use Splicewire\Beam\Threads\Enums\ThreadKind;
  * sibling {@see EmbedParticle} trait so this trait stays the generic thread machinery only. An embed-capable
  * consumer (tower Thread / beam-embed Embed) `use`s BOTH.
  *
- * Relations that reach tower-tier / beam-embed models ({@see messages()}) are declared by class-STRING (the
- * message model is CONFIG-resolved via `config('embed.message_model')`) so Eloquent resolves them lazily at
- * call time — no autoload-time dependency onto tower-core or beam-embed.
+ * TH-08 message-layer cutover: {@see messages()} now points at the substrate {@see Message} particle
+ * directly (its OWN package, a legal reference) — the former `config('embed.message_model')` seam onto the
+ * legacy tower `ThreadMessage`/`thread_messages` read path is retired; the substrate is the one message store.
  *
  * @property-read Carbon|null $created_at
  */
@@ -112,13 +113,13 @@ trait ConversationParticle
 
     public function messages(): HasMany
     {
-        // Config-resolve the host's message model (recohere follow-up): the message class must NOT be
-        // hardcoded to a tower / App\ class. The host binds its concrete message class behind
-        // `config('embed.message_model')` — mirroring the `config('embed.base_model')` seam T02
-        // established for the base Thread. A bare beam site can leave it unset (null ⇒ Eloquent
-        // derives it from this class, which a beam-only deployment never actually calls).
-        // Explicit FK: the column is `thread_id` (the relation used to live on the tower Thread).
-        return $this->hasMany(config('embed.message_model'), 'thread_id')->orderBy('created_at');
+        // TH-08 message-layer cutover: a conversation's messages ARE the substrate {@see Message} particle
+        // (`beam_thread_messages`) — the ONE message store. The former `config('embed.message_model')` seam
+        // (which pointed at the legacy tower `ThreadMessage`/`thread_messages` read path) is retired: the
+        // hybrid already WRITES substrate messages (TurnService owns the write), and the read now goes to the
+        // same place. beam-threads references its OWN Message model (same package — no topology edge).
+        // Explicit FK: the column is `thread_id`. Substrate messages are time-ordered by `created_at`.
+        return $this->hasMany(Message::class, 'thread_id')->orderBy('created_at');
     }
 
     // -------------------------------------------------------------------------
