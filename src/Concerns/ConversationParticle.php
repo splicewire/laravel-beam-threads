@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Threads\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Rushing\PermissionCascade\Concerns\HasUserId;
@@ -36,9 +36,14 @@ use Splicewire\Beam\Threads\Enums\ThreadKind;
  * The trait deliberately does NOT carry HasTags: `Splicewire\Beam\Taxonomy` depends DOWN on beam-core,
  * so pulling HasTags down here would form a require cycle. Tagging therefore stays a tower-Thread concern.
  *
- * Relations that reach tower-tier / beam-embed models ({@see messages()}, {@see visitor()}) are declared
- * by class-STRING (the message model is CONFIG-resolved via `config('embed.message_model')`) so Eloquent
- * resolves them lazily at call time — no autoload-time dependency onto tower-core or beam-embed.
+ * TH-07 header migration (phase 3): the embed/publish-specific members (the embed columns,
+ * `visitor()`/`publishedFrom()`, the template/session predicates, `scopeSessions`) were split OUT into the
+ * sibling {@see EmbedParticle} trait so this trait stays the generic thread machinery only. An embed-capable
+ * consumer (tower Thread / beam-embed Embed) `use`s BOTH.
+ *
+ * Relations that reach tower-tier / beam-embed models ({@see messages()}) are declared by class-STRING (the
+ * message model is CONFIG-resolved via `config('embed.message_model')`) so Eloquent resolves them lazily at
+ * call time — no autoload-time dependency onto tower-core or beam-embed.
  *
  * @property-read Carbon|null $created_at
  */
@@ -56,14 +61,15 @@ trait ConversationParticle
     /**
      * Eloquent auto-calls `initialize{TraitName}()` on every model boot. The trait sets the shared
      * conversation columns/casts HERE rather than as trait properties: a trait property whose default
-     * differs from the base {@see \Illuminate\Database\Eloquent\Model}'s own `$fillable`/`$casts` default
+     * differs from the base {@see Model}'s own `$fillable`/`$casts` default
      * is a fatal "same property … definition differs" composition error. Merging at init sidesteps that
      * and lets a consuming model ADD its own fillable/casts on top (tower Thread, beam-embed Embed).
      */
     public function initializeConversationParticle(): void
     {
         // The generic mass-assignable columns shared by every conversation kind (interactive / embed
-        // template / embed session). Knowledge-grounding columns are set through Thread's own traits.
+        // template / embed session). Knowledge-grounding columns are set through Thread's own traits; the
+        // embed/publish columns moved to {@see EmbedParticle} (TH-07 header migration phase 3).
         $this->mergeFillable([
             'assistant_id',
             'title',
@@ -77,13 +83,6 @@ trait ConversationParticle
             'user_id',
             'visibility',
             'kind',
-            'visitor_id',
-            'published_from_id',
-            'snapshot_config',
-            'template_version',
-            'embed_policy',
-            'retention_days',
-            'session_status',
             'created_at',
             'updated_at',
         ]);
@@ -93,8 +92,6 @@ trait ConversationParticle
             'tools' => SchemalessAttributes::class,
             'instructions_schemas' => SchemalessAttributes::class,
             'kind' => ThreadKind::class,
-            'snapshot_config' => 'array',
-            'embed_policy' => 'array',
         ]);
     }
 
@@ -122,31 +119,6 @@ trait ConversationParticle
         // derives it from this class, which a beam-only deployment never actually calls).
         // Explicit FK: the column is `thread_id` (the relation used to live on the tower Thread).
         return $this->hasMany(config('embed.message_model'), 'thread_id')->orderBy('created_at');
-    }
-
-    // -------------------------------------------------------------------------
-    // Embed (DIE-04)
-    // -------------------------------------------------------------------------
-
-    public function visitor(): BelongsTo
-    {
-        return $this->belongsTo(\Splicewire\Beam\Embed\Models\Visitor::class);
-    }
-
-    /** The template this session was spawned from (self-FK, sessions only). */
-    public function publishedFrom(): BelongsTo
-    {
-        return $this->belongsTo(static::class, 'published_from_id');
-    }
-
-    public function isPublished(): bool
-    {
-        return $this->kind === ThreadKind::EmbedTemplate;
-    }
-
-    public function isSession(): bool
-    {
-        return $this->kind === ThreadKind::EmbedSession;
     }
 
     // -------------------------------------------------------------------------
@@ -204,17 +176,5 @@ trait ConversationParticle
             'instructions_schemas' => $snapshot['instructions_schemas'] ?? null,
             'tools' => $snapshot['tools'] ?? null,
         ])->save();
-    }
-
-    /** Sessions review query: `kind = embed_session` (optionally under a template). */
-    public function scopeSessions(Builder $query, ?string $publishedFromId = null): Builder
-    {
-        $query->where('kind', ThreadKind::EmbedSession->value);
-
-        if ($publishedFromId !== null) {
-            $query->where('published_from_id', $publishedFromId);
-        }
-
-        return $query;
     }
 }
