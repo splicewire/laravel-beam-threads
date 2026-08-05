@@ -318,6 +318,132 @@ class Message extends Model
         return $child;
     }
 
+    // -------------------------------------------------------------------------
+    // Failure-tolerant turn completion (create-then-advance) — PRD §2.7 gap fix
+    //
+    // A turn's reply is written in TWO phases instead of one atomic appendChild(), so a mid-stream
+    // driver failure (LLM error/timeout/tool failure) cannot lose the partial reply or leave no record:
+    //
+    //   $child = $leaf->beginChild($agentId);   // empty streaming child, live immediately
+    //   try   { ... accumulate segments ... $child->finalizeCompletion($segments); }
+    //   catch { $child->failCompletion($segments, $e); throw; }
+    //
+    // The COMPLETION LIFECYCLE lives in the Message's `meta` JSON column (meta.completion_status ∈
+    // {streaming, complete, failed}), NEVER in the content payload (ThreadMessageData is content-only:
+    // `content: Segment[]` + `references`). meta is written EXPLICITLY (a forceFill save around the
+    // ParticleWriter content write) — it is NOT part of fillFromSchemaPayload(), which touches only the
+    // payload column — and is always MERGED so unrelated meta keys survive.
+    // -------------------------------------------------------------------------
+
+    /** The `meta` key holding the turn-completion lifecycle status ({@see beginChild()} et al). */
+    public const COMPLETION_STATUS_META_KEY = 'completion_status';
+
+    public const COMPLETION_STREAMING = 'streaming';
+
+    public const COMPLETION_COMPLETE = 'complete';
+
+    public const COMPLETION_FAILED = 'failed';
+
+    /**
+     * BEGIN a turn's reply — create the agent-authored CHILD message at turn START with EMPTY content
+     * (`ThreadMessageData(content: [])`) and `meta.completion_status = 'streaming'`, so the row (and its id)
+     * exists LIVE the instant the turn opens: the SSE layer can address it, and a mid-stream crash still
+     * leaves a persisted record ({@see failCompletion()} fills its partial content). The empty content is
+     * finalised later by {@see finalizeCompletion()} / {@see failCompletion()}.
+     *
+     * Like {@see appendChild()}: the content write rides beam-core's shared {@see ParticleWriter}
+     * (authorize → validate → persist → emit) with the lineage bindings pre-set, and THIS leaf's
+     * `selected_child_id` is repointed at the new child so it is the selected continuation immediately
+     * (live streaming visibility — a `streaming` child IS part of the walked path; a `failed` one is NOT,
+     * see {@see linearConversation()}). The `meta` status is written explicitly in the writer's
+     * after-persist hook (so it lands in the SAME save as the content, not a fill-fighting second write).
+     */
+    public function beginChild(string $participantId): static
+    {
+        $child = new static([
+            'schema_ref' => static::SCHEMA_REF,
+            'thread_id' => $this->getAttribute('thread_id'),
+            'participant_id' => $participantId,
+            'parent_id' => $this->getKey(),
+        ]);
+
+        $payload = (new ThreadMessageData(content: []))->toArray();
+
+        app(ParticleWriter::class)->write($child, $payload, after: function (Message $m): void {
+            $m->mergeCompletionMeta(static::COMPLETION_STREAMING);
+        });
+
+        // Live visibility: repoint this leaf's selected child at the streaming reply immediately.
+        $this->forceFill(['selected_child_id' => $child->getKey()])->save();
+
+        return $child;
+    }
+
+    /**
+     * FINALIZE a streaming reply on SUCCESS ({@see beginChild()}) — write the full `Segment[]` content
+     * through the {@see ParticleWriter} and set `meta.completion_status = 'complete'` (merged). The child is
+     * already the selected continuation (repointed at begin); the linear conversation now walks through a
+     * clean, complete assistant reply.
+     *
+     * @param  Segment[]  $segments  the fully-accumulated reply content
+     */
+    public function finalizeCompletion(array $segments): static
+    {
+        $payload = (new ThreadMessageData(content: $segments))->toArray();
+
+        app(ParticleWriter::class)->write($this, $payload, after: function (Message $m): void {
+            $m->mergeCompletionMeta(static::COMPLETION_COMPLETE);
+        });
+
+        return $this;
+    }
+
+    /**
+     * FAIL a streaming reply ({@see beginChild()}) — persist the segments accumulated SO FAR as the child's
+     * content + set `meta.completion_status = 'failed'` and `meta.error` (the throwable's message + class —
+     * NOT a full stack). The partial reply is preserved for audit; it is DELIBERATELY excluded from later
+     * context assembly ({@see linearConversation()} stops at a `failed` node), so a retry extends a fresh
+     * turn from the last SUCCESSFUL leaf rather than treating the broken partial as a clean assistant reply.
+     *
+     * @param  Segment[]  $segments  the reply content accumulated before the failure (may be empty)
+     */
+    public function failCompletion(array $segments, \Throwable $e): static
+    {
+        $payload = (new ThreadMessageData(content: $segments))->toArray();
+
+        app(ParticleWriter::class)->write($this, $payload, after: function (Message $m) use ($e): void {
+            $m->mergeCompletionMeta(static::COMPLETION_FAILED, [
+                'error' => [
+                    'message' => $e->getMessage(),
+                    'class' => get_class($e),
+                ],
+            ]);
+        });
+
+        return $this;
+    }
+
+    /**
+     * Merge the completion lifecycle status (and any extra keys) into the `meta` JSON column WITHOUT
+     * clobbering other meta keys, then persist meta on THIS instance. Called from inside the
+     * {@see ParticleWriter} after-persist hook so meta lands in the same save as the content write; a
+     * standalone `forceFill(['meta' => ...])->save()` keeps meta off the payload seam
+     * ({@see fillFromSchemaPayload()} touches only the payload column, never meta).
+     *
+     * @param  array<string, mixed>  $extra  additional meta keys to merge (e.g. an `error` record)
+     */
+    protected function mergeCompletionMeta(string $status, array $extra = []): void
+    {
+        $meta = (array) ($this->getAttribute('meta') ?? []);
+        $meta[static::COMPLETION_STATUS_META_KEY] = $status;
+
+        foreach ($extra as $key => $value) {
+            $meta[$key] = $value;
+        }
+
+        $this->forceFill(['meta' => $meta])->save();
+    }
+
     /**
      * EDIT this message — a human authoring a corrected variant. A sibling under the same parent (PRD §2.5:
      * "edit … creates a sibling"). Delegates to {@see appendSibling()}. Defaults the author to this message's
@@ -451,6 +577,14 @@ class Message extends Model
      * its whole downstream chain) IS the canonical conversation. A non-root `$this` walks from itself as
      * before.
      *
+     * FAILED-COMPLETION AWARE (create-then-advance, PRD §2.7): a message whose `meta.completion_status` is
+     * `'failed'` — a partial reply persisted for AUDIT when a turn crashed mid-stream ({@see failCompletion()})
+     * — is NOT canonical conversation. The walk STOPS BEFORE it (the failed partial is neither included nor
+     * walked past), so the failed record never poisons the next turn's assembled context as if it were a
+     * clean assistant reply. The row stays in the tree for audit, but the linear conversation ends at the
+     * last SUCCESSFUL leaf — a retry therefore extends a NEW turn from there, not from the broken partial. A
+     * `'streaming'` child (a turn still in flight) IS included, so a live SSE caller sees it as it fills.
+     *
      * @return Collection<int, static>
      */
     public function linearConversation(): Collection
@@ -459,6 +593,12 @@ class Message extends Model
         $cursor = $this->getAttribute('parent_id') === null ? $this->resolveSelectedRoot() : $this;
 
         while ($cursor !== null) {
+            // A failed partial is an audit record, not canonical conversation — stop before it so it never
+            // enters the assembled context (a retry extends from the last successful leaf instead).
+            if ($cursor->completionStatus() === static::COMPLETION_FAILED) {
+                break;
+            }
+
             $path->push($cursor);
 
             $next = $cursor->getAttribute('selected_child_id');
@@ -466,6 +606,12 @@ class Message extends Model
         }
 
         return $path;
+    }
+
+    /** The turn-completion lifecycle status from `meta` (null for a non-turn / legacy message). */
+    public function completionStatus(): ?string
+    {
+        return ((array) ($this->getAttribute('meta') ?? []))[static::COMPLETION_STATUS_META_KEY] ?? null;
     }
 
     /**

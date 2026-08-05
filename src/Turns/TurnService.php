@@ -7,7 +7,6 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Collection;
 use Splicewire\Beam\Threads\Contracts\ParticipantTurnDriver;
 use Splicewire\Beam\Threads\Data\Segment;
-use Splicewire\Beam\Threads\Data\ThreadMessageData;
 use Splicewire\Beam\Threads\Enums\ParticipantKind;
 use Splicewire\Beam\Threads\Models\Message;
 use Splicewire\Beam\Threads\Models\Participant;
@@ -18,7 +17,10 @@ use Splicewire\Beam\Threads\Models\Thread;
  * owns so an agent participant can take a turn: it RESOLVES the driver ({@see TurnDriverResolver}), enforces
  * the TRIGGER policy (§6), SERIALISES one active turn per thread, ASSEMBLES the turn off the lineage walk
  * ({@see AssembledTurn::fromLeaf()}), consumes the driver's `Segment`-delta stream, and COMMITS the completed
- * agent-authored message through the beam write pipeline ({@see Message::appendChild()} → {@see ParticleWriter}).
+ * agent-authored message through the beam write pipeline. The commit is FAILURE-TOLERANT
+ * (create-then-advance): it opens an empty streaming CHILD up front ({@see Message::beginChild()}), then
+ * {@see Message::finalizeCompletion()} on success or {@see Message::failCompletion()} on a mid-stream crash —
+ * so a driver failure can never lose the partial reply or leave no record (both ride {@see ParticleWriter}).
  *
  * The driver is PURE: this service hands it a fully-resolved {@see AssembledTurn} and it returns a stream —
  * it never queries or persists. beam-threads owns the tree invariants (append as CHILD of the leaf, repoint
@@ -103,10 +105,14 @@ class TurnService
      *
      * Identical policy to {@see takeTurn()} — driver resolution, the drivable-agent guard, the two-layer
      * one-active-turn serialisation, and assembly off the ONE selected root→leaf path. The only difference is
-     * that the driver's delta stream is passed THROUGH to the caller (yielded) as well as collected; when the
-     * stream completes the collected segments are committed as a CHILD of the leaf through the beam write
-     * pipeline ({@see Message::appendChild()} → {@see ParticleWriter}). The generator's RETURN is the persisted
-     * agent-authored {@see Message} — the substrate owns the write, the driver persisted nothing.
+     * that the driver's delta stream is passed THROUGH to the caller (yielded) as well as collected. The reply
+     * is committed FAILURE-TOLERANTLY (create-then-advance, PRD §2.7): an empty streaming CHILD of the leaf is
+     * opened FIRST ({@see Message::beginChild()}), then finalized ({@see Message::finalizeCompletion()}) when the
+     * stream completes — or, if the driver throws mid-stream, the accumulated-so-far partial is persisted +
+     * flagged failed ({@see Message::failCompletion()}) before the exception re-propagates, so a partial reply
+     * is never lost and always leaves a record. All writes ride the beam write pipeline ({@see ParticleWriter}).
+     * The generator's RETURN is the persisted agent-authored {@see Message} — the substrate owns the write, the
+     * driver persisted nothing.
      *
      * @return Generator<int, Segment, mixed, Message> the ordered Segment deltas; returns the committed reply
      *
@@ -146,22 +152,36 @@ class TurnService
             /** @var Message $leaf */
             $leaf = $root->linearConversation()->last();
 
-            // Consume the driver's Segment-delta stream, in order, into the finalised content — AND yield each
-            // delta straight through so a live caller streams it as it arrives.
+            // FAILURE-TOLERANT create-then-advance (PRD §2.7): open the agent reply as an EMPTY streaming
+            // CHILD FIRST — the row (and its id) exists live the instant the turn opens, so a mid-stream
+            // driver crash cannot lose the partial reply or leave no record. Two writes per turn (begin +
+            // finalize/fail), NOT per-token: segments still accumulate in memory and are written once.
+            $child = $leaf->beginChild((string) $agent->getKey());
+
             $segments = [];
-            foreach ($driver->takeTurn($turn) as $delta) {
-                if ($delta instanceof Segment) {
-                    $segments[] = $delta;
-                    yield $delta;
+
+            try {
+                // Consume the driver's Segment-delta stream, in order, into the finalised content — AND yield
+                // each delta straight through so a live caller streams it as it arrives.
+                foreach ($driver->takeTurn($turn) as $delta) {
+                    if ($delta instanceof Segment) {
+                        $segments[] = $delta;
+                        yield $delta;
+                    }
                 }
+
+                // Success: finalize the accumulated content + mark complete, through the beam write pipeline.
+                $child->finalizeCompletion($segments);
+
+                return $child->fresh();
+            } catch (\Throwable $e) {
+                // Mid-stream failure: persist the accumulated-so-far partial + mark failed (with the error),
+                // then RE-THROW. The record survives for audit; linearConversation() excludes it, so a retry
+                // assembles from the last successful leaf, not the broken partial.
+                $child->failCompletion($segments, $e);
+
+                throw $e;
             }
-
-            $payload = (new ThreadMessageData(content: $segments))->toArray();
-
-            // The SUBSTRATE owns the write: append the agent's reply as a CHILD of the leaf (extends the
-            // conversation), repointing selected_child_id — THROUGH the beam write pipeline. The driver
-            // persisted nothing.
-            return $leaf->appendChild((string) $agent->getKey(), $payload);
         } finally {
             unset(static::$active[$threadId]);
             $this->unlock($lockKey);
