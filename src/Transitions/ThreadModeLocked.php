@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Threads\Transitions;
 
 use RuntimeException;
-use Splicewire\Beam\Enums\ThreadKind;
+use Splicewire\Beam\Threads\Enums\ThreadKind;
 use Splicewire\Beam\Threads\Models\Thread;
 
 /**

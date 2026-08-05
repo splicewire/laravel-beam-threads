@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Threads\Data;
 
 use Schemastud\DataSchemas\Contracts\SchemaIdentity;
 use Spatie\LaravelData\Data;
-use Splicewire\Beam\Enums\ThreadKind;
+use Splicewire\Beam\Threads\Enums\ThreadKind;
 use Splicewire\Beam\Threads\Enums\ThreadMode;
 use Splicewire\Beam\Write\ParticleWriter;
 

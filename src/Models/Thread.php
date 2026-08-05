@@ -8,7 +8,7 @@ use Rushing\Versioning\Concerns\Versionable as VersionableTrait;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\Contracts\Versionable;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
-use Splicewire\Beam\Enums\ThreadKind;
+use Splicewire\Beam\Threads\Enums\ThreadKind;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Threads\Data\ThreadData;
