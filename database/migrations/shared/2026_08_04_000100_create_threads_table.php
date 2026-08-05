@@ -57,6 +57,11 @@ return new class extends Migration
             $table->string('source_tier')->default('local')->index();
             $table->timestamp('fetched_at')->nullable();
 
+            // Human-facing header identity (TH-07 header migration): the tower Thread's `title` moves onto the
+            // particle, and a `slug` is generated from it via spatie/laravel-sluggable's HasSlug on the model.
+            $table->string('title')->nullable();
+            $table->string('slug')->nullable()->index();
+
             // Queryable projection of the payload's structural axes (mode-invariant; NO realm).
             $table->string('kind')->nullable()->index();
             $table->string('mode')->nullable()->index();

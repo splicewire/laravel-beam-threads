@@ -7,11 +7,13 @@ use Rushing\Versioning\Concerns\ReconcilesPayloadOnRead;
 use Rushing\Versioning\Concerns\Versionable as VersionableTrait;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\Contracts\Versionable;
+use Spatie\Sluggable\HasSlug;
+use Spatie\Sluggable\SlugOptions;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
-use Splicewire\Beam\Threads\Enums\ThreadKind;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Threads\Data\ThreadData;
+use Splicewire\Beam\Threads\Enums\ThreadKind;
 use Splicewire\Beam\Threads\Enums\ThreadMode;
 use Splicewire\Beam\Threads\Transitions\ReModeOutcome;
 use Splicewire\Beam\Threads\Transitions\ThreadModeLocked;
@@ -55,6 +57,7 @@ use Splicewire\Beam\Write\ParticleWriter;
  */
 class Thread extends Model implements Versionable
 {
+    use HasSlug;
     use PersistsBeamParticle;
     use ReconcilesPayloadOnRead;
     use VersionableTrait;
@@ -80,6 +83,8 @@ class Thread extends Model implements Versionable
      */
     protected $fillable = [
         'schema_ref',
+        'title',
+        'slug',
         'kind',
         'mode',
         'max_depth',
@@ -130,6 +135,20 @@ class Thread extends Model implements Versionable
     public function payloadColumn(): string
     {
         return 'payload';
+    }
+
+    /**
+     * Slug generation (TH-07 header migration): derive the URL `slug` from the header `title`. A titleless
+     * thread (many particle rows carry no title) yields a NULL slug (`skipGenerateWhen` blank-title guard),
+     * and `doNotGenerateSlugsOnUpdate` keeps the slug stable once set so an edited title never breaks a link.
+     */
+    public function getSlugOptions(): SlugOptions
+    {
+        return SlugOptions::create()
+            ->generateSlugsFrom('title')
+            ->saveSlugsTo('slug')
+            ->skipGenerateWhen(fn () => blank($this->title))
+            ->doNotGenerateSlugsOnUpdate();
     }
 
     /**

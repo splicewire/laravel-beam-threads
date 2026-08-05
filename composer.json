@@ -10,7 +10,8 @@
         "illuminate/http": "^11.0|^12.0|^13.0",
         "illuminate/support": "^11.0|^12.0|^13.0",
         "splicewire/laravel-beam": "*",
-        "schemastud/laravel-data-schemas": "*"
+        "schemastud/laravel-data-schemas": "*",
+        "spatie/laravel-sluggable": "^3.5"
     },
     "require-dev": {
         "laravel/pint": "^1.0",
