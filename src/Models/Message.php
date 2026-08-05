@@ -104,7 +104,7 @@ class Message extends Model
      */
     public function getTable(): string
     {
-        return config('beam.threads.tables.messages', 'beam_thread_messages');
+        return config('beam.threads.tables.messages', 'thread_messages');
     }
 
     /**
@@ -350,6 +350,92 @@ class Message extends Model
     public function selectChild(string $childId): void
     {
         $this->forceFill(['selected_child_id' => $childId])->save();
+    }
+
+    /**
+     * PRUNE this message from the conversation (TH-08 phase 5, Step C) — the substrate-native delete of a
+     * turn. Removes this message AND its whole downstream lineage subtree (every descendant reachable via
+     * `parent_id`), then repairs the SELECTION pointer that referenced it so the linear conversation stays
+     * consistent ({@see linearConversation()} never dangles on a deleted id):
+     *
+     *  - NON-root (has a `parent_id`): the pointer lives on the shared parent's `selected_child_id`. If it
+     *    pointed at this row, repoint it at a surviving SIBLING variant (newest) — or null when none remains.
+     *  - ROOT (`parent_id` is null): the pointer lives on the THREAD's `selected_root_id`. If it pointed at
+     *    this row, repoint it at a surviving root SIBLING (earliest) — or null when none remains.
+     *
+     * Immutable-row model: this is the ONE deliberate exception (a user deleting their own turn), scoped to
+     * the row + its descendants. Runs in a transaction so a partial prune can't dangle a pointer.
+     */
+    public function pruneVariant(): void
+    {
+        $this->getConnection()->transaction(function (): void {
+            $parentId = $this->getAttribute('parent_id');
+            $threadId = $this->getAttribute('thread_id');
+            $key = $this->getKey();
+
+            // Collect this row + every descendant via the parent_id edge (a bounded walk over the thread's
+            // messages), so the whole subtree under the deleted turn goes with it.
+            $subtree = $this->collectSubtreeIds();
+
+            if ($parentId !== null) {
+                // Repoint the parent's selected child off this row onto a surviving sibling (newest), else null.
+                $parent = static::query()->find($parentId);
+                if ($parent !== null && $parent->getAttribute('selected_child_id') === $key) {
+                    $replacement = static::query()
+                        ->where('parent_id', $parentId)
+                        ->whereNotIn('id', $subtree)
+                        ->orderByDesc('created_at')
+                        ->orderByDesc('id')
+                        ->value('id');
+                    $parent->forceFill(['selected_child_id' => $replacement])->save();
+                }
+            } else {
+                // Root: repoint the thread's selected root off this row onto a surviving root sibling, else null.
+                $selectedRoot = Thread::query()->whereKey($threadId)->value('selected_root_id');
+                if ($selectedRoot === $key) {
+                    $replacement = static::query()
+                        ->where('thread_id', $threadId)
+                        ->whereNull('parent_id')
+                        ->whereNotIn('id', $subtree)
+                        ->orderBy('created_at')
+                        ->orderBy('id')
+                        ->value('id');
+                    Thread::query()->whereKey($threadId)->update(['selected_root_id' => $replacement]);
+                }
+            }
+
+            static::query()->whereIn('id', $subtree)->delete();
+        });
+    }
+
+    /**
+     * The ids of this message and every descendant reachable via the `parent_id` lineage edge, within this
+     * thread — the subtree a {@see pruneVariant()} removes. A bounded breadth-walk over the thread's rows.
+     *
+     * @return array<int, string>
+     */
+    protected function collectSubtreeIds(): array
+    {
+        $parentOf = static::query()
+            ->where('thread_id', $this->getAttribute('thread_id'))
+            ->pluck('parent_id', 'id')
+            ->all();
+
+        $ids = [$this->getKey()];
+        $frontier = [$this->getKey()];
+
+        while ($frontier !== []) {
+            $next = [];
+            foreach ($parentOf as $id => $parent) {
+                if (in_array($parent, $frontier, true) && ! in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                    $next[] = $id;
+                }
+            }
+            $frontier = $next;
+        }
+
+        return $ids;
     }
 
     /**

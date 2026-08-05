@@ -41,6 +41,6 @@ return new class extends Migration
 
     protected function table(): string
     {
-        return config('beam.threads.tables.threads', 'beam_threads');
+        return config('beam.threads.tables.threads', 'threads');
     }
 };

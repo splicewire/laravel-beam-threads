@@ -75,7 +75,7 @@ class Participant extends Model
      */
     public function getTable(): string
     {
-        return config('beam.threads.tables.participants', 'beam_thread_participants');
+        return config('beam.threads.tables.participants', 'thread_participants');
     }
 
     // -------------------------------------------------------------------------

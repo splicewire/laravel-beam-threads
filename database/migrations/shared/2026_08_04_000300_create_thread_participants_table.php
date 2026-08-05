@@ -71,7 +71,7 @@ return new class extends Migration
 
             $table->foreign('thread_id')
                 ->references('id')
-                ->on(config('beam.threads.tables.threads', 'beam_threads'))
+                ->on(config('beam.threads.tables.threads', 'threads'))
                 ->cascadeOnDelete();
         });
 
@@ -105,6 +105,6 @@ return new class extends Migration
 
     protected function table(): string
     {
-        return config('beam.threads.tables.participants', 'beam_thread_participants');
+        return config('beam.threads.tables.participants', 'thread_participants');
     }
 };
