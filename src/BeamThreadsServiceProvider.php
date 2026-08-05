@@ -52,9 +52,12 @@ class BeamThreadsServiceProvider extends ServiceProvider
      * will store, pinned now so a later rename of the concrete model leaves stored rows resolvable.
      *
      * Mirrors how beam-core pins its own particle morph alias (see BeamServiceProvider) — the token is
-     * the durable identity, the class is free to move. beam-core registers ADDITIVELY (morphMap) because
-     * a rich host has many class-string morphs; here the vocabulary is beam-threads-OWNED and closed, so
-     * it is enforced (enforceMorphMap) to keep the participant set honest.
+     * the durable identity, the class is free to move. Registered ADDITIVELY (`Relation::morphMap`),
+     * NEVER `enforceMorphMap`: a beam-composing host (splicewire-app) has MANY models on class-string
+     * morphs (`Tenant`, `Assistant`, workflow subjects, …), and `enforceMorphMap` toggles GLOBAL strict
+     * mode (`requireMorphMap`) that then rejects every one of them (`ClassMorphViolationException`) —
+     * breaking tenant provisioning app-wide. The participant vocabulary stays honest by validation at the
+     * write path, not by imposing global strict morphing on the whole host.
      *
      * DELIBERATELY ABSENT: the AI-driver participant alias. That kind is a tower-tier concern — the tower
      * binds it in threads-substrate ticket 08 — and beam-threads stays AI-free, so it is NOT registered
@@ -62,7 +65,7 @@ class BeamThreadsServiceProvider extends ServiceProvider
      */
     protected function bootParticipantMorphMap(): void
     {
-        Relation::enforceMorphMap([
+        Relation::morphMap([
             // A first-class authenticated account participant. Resolved from config so a host can point
             // this at its own user model; the placeholder default is the future beam-threads participant
             // concrete (lands in a later ticket).
