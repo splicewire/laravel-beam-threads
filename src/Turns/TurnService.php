@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Threads\Turns;
 
+use Generator;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Collection;
 use Splicewire\Beam\Threads\Contracts\ParticipantTurnDriver;
@@ -83,6 +84,37 @@ class TurnService
      */
     public function takeTurn(Thread $thread, Participant $agent): Message
     {
+        // Drain the streaming variant to its committed message. Both paths share ONE implementation
+        // ({@see streamTurn()}) so the buffered and streamed turns can never diverge on assembly, the
+        // serialisation guard, or the write.
+        $stream = $this->streamTurn($thread, $agent);
+
+        foreach ($stream as $_) {
+            // discard the deltas — the buffered caller only wants the committed message.
+        }
+
+        return $stream->getReturn();
+    }
+
+    /**
+     * The STREAMING sibling of {@see takeTurn()} (threads-substrate PRD §2.7, ADR-0175 §5) — take a turn FOR a
+     * named agent participant and YIELD each {@see Segment} delta as the driver produces it, so a live caller
+     * (an SSE response) can flush the reply as it streams, WHILE the substrate still owns the write.
+     *
+     * Identical policy to {@see takeTurn()} — driver resolution, the drivable-agent guard, the two-layer
+     * one-active-turn serialisation, and assembly off the ONE selected root→leaf path. The only difference is
+     * that the driver's delta stream is passed THROUGH to the caller (yielded) as well as collected; when the
+     * stream completes the collected segments are committed as a CHILD of the leaf through the beam write
+     * pipeline ({@see Message::appendChild()} → {@see ParticleWriter}). The generator's RETURN is the persisted
+     * agent-authored {@see Message} — the substrate owns the write, the driver persisted nothing.
+     *
+     * @return Generator<int, Segment, mixed, Message> the ordered Segment deltas; returns the committed reply
+     *
+     * @throws TurnNotTriggerable the participant is not a drivable agent, or the driver refused it
+     * @throws TurnInProgress a turn is already active on the thread (serialisation guard)
+     */
+    public function streamTurn(Thread $thread, Participant $agent): Generator
+    {
         $driver = $this->resolver->resolveOrFail();
 
         $this->assertDrivableAgent($driver, $thread, $agent);
@@ -114,11 +146,13 @@ class TurnService
             /** @var Message $leaf */
             $leaf = $root->linearConversation()->last();
 
-            // Consume the driver's Segment-delta stream, in order, into the finalised content.
+            // Consume the driver's Segment-delta stream, in order, into the finalised content — AND yield each
+            // delta straight through so a live caller streams it as it arrives.
             $segments = [];
             foreach ($driver->takeTurn($turn) as $delta) {
                 if ($delta instanceof Segment) {
                     $segments[] = $delta;
+                    yield $delta;
                 }
             }
 
@@ -132,6 +166,32 @@ class TurnService
             unset(static::$active[$threadId]);
             $this->unlock($lockKey);
         }
+    }
+
+    /**
+     * The STREAMING sibling of {@see onHumanMessage()} — apply the same TRIGGER policy (0 agents / null driver
+     * → null no-op; 1 agent → auto-trigger; N agents → refuse), but return a {@see streamTurn()} generator so a
+     * live caller streams the reply. Null when there is nothing to trigger (a passive/human-only thread).
+     *
+     * @return Generator<int, Segment, mixed, Message>|null
+     */
+    public function onHumanMessageStreamed(Thread $thread): ?Generator
+    {
+        if ($this->resolver->resolve() === null) {
+            return null; // passive thread — no automated turn-taking.
+        }
+
+        $agents = $this->agentsOf($thread);
+
+        if ($agents->isEmpty()) {
+            return null; // human-only thread — nothing to trigger.
+        }
+
+        if ($agents->count() > 1) {
+            throw TurnNotTriggerable::ambiguousAgent($thread);
+        }
+
+        return $this->streamTurn($thread, $agents->first());
     }
 
     /**
