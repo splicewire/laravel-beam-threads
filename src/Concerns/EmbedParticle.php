@@ -72,13 +72,17 @@ trait EmbedParticle
         return $this->kind === ThreadKind::EmbedSession;
     }
 
-    /** Sessions review query: `kind = embed_session` (optionally under a template). */
+    /**
+     * Sessions review query: `kind = embed_session` (optionally under a template). `published_from_id` moved
+     * to the `embed_sessions` sidecar (TH-07 header migration phase 4), so it is filtered via the
+     * `embedSession` companion relation.
+     */
     public function scopeSessions(Builder $query, ?string $publishedFromId = null): Builder
     {
         $query->where('kind', ThreadKind::EmbedSession->value);
 
         if ($publishedFromId !== null) {
-            $query->where('published_from_id', $publishedFromId);
+            $query->whereHas('embedSession', fn ($q) => $q->where('published_from_id', $publishedFromId));
         }
 
         return $query;
