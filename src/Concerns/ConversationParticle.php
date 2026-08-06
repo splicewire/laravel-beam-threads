@@ -72,7 +72,7 @@ trait ConversationParticle
         // template / embed session). Knowledge-grounding columns are set through Thread's own traits; the
         // embed/publish columns moved to {@see EmbedParticle} (TH-07 header migration phase 3).
         $this->mergeFillable([
-            'assistant_id',
+            'agent_id',
             'title',
             'model',
             'max_tool_steps',
@@ -133,7 +133,7 @@ trait ConversationParticle
 
     /**
      * Freeze the conversation config that publishes DELIBERATELY (ticket 13, payload width W3): the
-     * instructions triplet + model/params/tool-budget/tools + title/assistant. Operational policy
+     * instructions triplet + model/params/tool-budget/tools + title/agent. Operational policy
      * (`enabled` kill-switch, `allowed_origins`, wallet, launcher cosmetics) is DELIBERATELY absent —
      * it stays live so safety controls apply instantly, never gated behind a re-publish. The leading
      * `_hash` lets a reader answer "has the working copy diverged from HEAD?" without diffing.
@@ -143,7 +143,7 @@ trait ConversationParticle
     public function toVersionSnapshot(): array
     {
         $content = [
-            'assistant_id' => $this->assistant_id,
+            'agent_id' => $this->agent_id,
             'title' => $this->title,
             'model' => $this->model,
             'max_tool_steps' => $this->max_tool_steps,
@@ -167,7 +167,7 @@ trait ConversationParticle
     public function restoreVersionSnapshot(array $snapshot): void
     {
         $this->fill([
-            'assistant_id' => $snapshot['assistant_id'] ?? null,
+            'agent_id' => $snapshot['agent_id'] ?? null,
             'title' => $snapshot['title'] ?? null,
             'model' => $snapshot['model'] ?? null,
             'max_tool_steps' => $snapshot['max_tool_steps'] ?? null,
