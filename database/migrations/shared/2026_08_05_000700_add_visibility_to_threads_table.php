@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Threads\Concerns\ConversationParticle;
 
 /**
@@ -36,6 +37,6 @@ return new class extends Migration
 
     protected function table(): string
     {
-        return config('beam.threads.tables.threads', 'threads');
+        return config('beam.threads.tables.threads', Beam::table('threads'));
     }
 };

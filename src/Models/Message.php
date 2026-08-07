@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use RuntimeException;
 use Rushing\Versioning\Concerns\ReconcilesPayloadOnRead;
 use Rushing\Versioning\Contracts\RecordReconciler;
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\SchemaId;
@@ -104,7 +105,7 @@ class Message extends Model
      */
     public function getTable(): string
     {
-        return config('beam.threads.tables.messages', 'thread_messages');
+        return config('beam.threads.tables.messages', Beam::table('thread_messages'));
     }
 
     /**

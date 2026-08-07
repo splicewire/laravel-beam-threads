@@ -1,5 +1,6 @@
 <?php
 
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Threads\Models\Participant\ExternalParticipant;
 use Splicewire\Beam\Threads\Models\Participant\SystemParticipant;
 use Splicewire\Beam\Threads\Models\Participant\UserParticipant;
@@ -39,22 +40,18 @@ return [
     | Table names
     |--------------------------------------------------------------------------
     |
-    | The particle table-prefix seam. A host repoints these when it composes
-    | beam-threads alongside other particles.
-    |
-    | CANONICAL NAMES (TH-07/TH-08 phase 5, Step B3): the legacy tower ChatBase `threads`
-    | / `thread_messages` tables have been DROPPED and the substrate is the sole owner of
-    | the conversation tables, so these now default to the canonical UNPREFIXED forms
-    | (`threads` / `thread_messages` / `thread_participants`). The transitional `beam_`
-    | prefix (which let the substrate coexist with the incumbent during the build) is
-    | retired. Still overridable via env for a host that vendors the tables elsewhere.
+    | The particle table-prefix seam. Defaults route through {@see Beam::table()} like
+    | every other beam particle (`beam_threads` / `beam_thread_messages` /
+    | `beam_thread_participants`) — the same single `beam.core.table_prefix` knob repoints
+    | them, alongside every other beam table, for a retrofit host. Still individually
+    | overridable via env.
     |
     */
 
     'tables' => [
-        'threads' => env('BEAM_THREADS_TABLE', 'threads'),
-        'messages' => env('BEAM_THREAD_MESSAGES_TABLE', 'thread_messages'),
-        'participants' => env('BEAM_THREAD_PARTICIPANTS_TABLE', 'thread_participants'),
+        'threads' => env('BEAM_THREADS_TABLE', Beam::table('threads')),
+        'messages' => env('BEAM_THREAD_MESSAGES_TABLE', Beam::table('thread_messages')),
+        'participants' => env('BEAM_THREAD_PARTICIPANTS_TABLE', Beam::table('thread_participants')),
     ],
 
     /*

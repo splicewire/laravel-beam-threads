@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use RuntimeException;
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Threads\Enums\ParticipantKind;
 use Splicewire\Beam\Threads\Enums\ParticipantRole;
 use Splicewire\Beam\Threads\Enums\ParticipantStatus;
@@ -75,7 +76,7 @@ class Participant extends Model
      */
     public function getTable(): string
     {
-        return config('beam.threads.tables.participants', 'thread_participants');
+        return config('beam.threads.tables.participants', Beam::table('thread_participants'));
     }
 
     // -------------------------------------------------------------------------

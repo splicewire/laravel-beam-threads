@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Threads\BeamThreadsServiceProvider;
 
 /**
@@ -52,7 +53,7 @@ return new class extends Migration
             // authored by an already-existing participant).
             $table->foreign('participant_id')
                 ->references('id')
-                ->on(config('beam.threads.tables.participants', 'thread_participants'))
+                ->on(config('beam.threads.tables.participants', Beam::table('thread_participants')))
                 ->cascadeOnDelete();
         });
     }
@@ -67,6 +68,6 @@ return new class extends Migration
 
     protected function table(): string
     {
-        return config('beam.threads.tables.messages', 'thread_messages');
+        return config('beam.threads.tables.messages', Beam::table('thread_messages'));
     }
 };
