@@ -37,9 +37,6 @@
                 "splicewire/laravel-beam",
                 "schemastud/laravel-data-schemas"
             ],
-            "downOnly": [
-                "splicewire/laravel-beam"
-            ],
             "mustNotRequire": [
                 "splicewire/tower*",
                 "splicewire/laravel-tower-*",
