@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Threads\Doctor\BeamThreadsMigrationsAudit;
 use Splicewire\Beam\Threads\Models\Participant\ExternalParticipant;
 use Splicewire\Beam\Threads\Models\Participant\SystemParticipant;
@@ -71,6 +72,18 @@ class BeamThreadsServiceProvider extends PackageServiceProvider
     {
         $this->bootParticipantMorphMap();
         $this->bootConfig();
+
+        // Self-register into beam-core's install manifest so `splicewire:beam:install` publishes
+        // this package's `shared/` migrations with the rest of the stack (recohere: this package
+        // predates the manifest and was never wired in — see tower's tests/TenantTestCase.php for
+        // the test-harness-side fallout of that gap).
+        if ($this->app->bound(BeamInstallManifest::class)) {
+            $this->app->make(BeamInstallManifest::class)->register(
+                package: 'splicewire/laravel-beam-threads',
+                publishTags: ['beam-threads-migrations'],
+                migrates: true,
+            );
+        }
 
         // beam-threads is itself an "operator" of the estate-wide publish-only stub migrations
         // convention — self-registers the doctor/operator check on ITS OWN migrations, same as every
