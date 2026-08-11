@@ -11,6 +11,7 @@
         "illuminate/support": "^11.0|^12.0|^13.0",
         "splicewire/laravel-beam": "*",
         "schemastud/laravel-data-schemas": "*",
+        "spatie/laravel-package-tools": "^1.16",
         "spatie/laravel-sluggable": "^3.5|^4.0"
     },
     "require-dev": {
@@ -72,6 +73,6 @@
     "prefer-stable": true,
     "scripts": {
         "pint": "@php -d memory_limit=512M vendor/bin/pint",
-        "test": "@php vendor/bin/phpunit"
+        "test": "vendor/bin/pest"
     }
 }

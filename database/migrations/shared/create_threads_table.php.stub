@@ -11,10 +11,16 @@ use Splicewire\Beam\Threads\Models\Thread;
  * The `threads` particle table (threads-substrate PRD §2.3, charter 02) — the thin, schema-typed,
  * snapshot-versioned aggregate header behind {@see Thread}.
  *
- * UBIQUITOUS (central + every tenant): this ONE `shared/` migration is registered into BOTH the central
- * `migrate` pass (loadMigrationsFrom) and Stancl's `tenants:migrate` pass (a `--path` push) by
- * {@see BeamThreadsServiceProvider::bootMigrations()}, so `threads` exists
- * identically in the central schema and every tenant schema.
+ * SQUASHED (no deployed data to preserve migration history for): this create absorbs 3 ALTERs that
+ * previously ran against it — `add_selected_root_to_threads`, `add_origin_message_to_threads`, and
+ * `add_visibility_to_threads_table` — folding `selected_root_id`, `origin_message_id`, and
+ * `visibility` directly into the create. Column order is not load-bearing.
+ *
+ * Publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE) — re-stamped to the install
+ * moment via {@see BeamThreadsServiceProvider::configurePackage()}'s `->hasMigrations([...])` on
+ * `vendor:publish --tag=beam-threads-migrations`; the host runs it. UBIQUITOUS (central + every
+ * tenant): this ships to the SINGLE `database/migrations/shared/` destination, picked up in BOTH the
+ * central `migrate` pass and Stancl's tenant pass by beam-tenancy's `registerSharedMigrationsPath()`.
  *
  * COLUMN SHAPE mirrors the beam particle table (`beam_particles`) — the particle machinery columns:
  *   - `id` (uuid7 PK — HasUuids on the model produces a time-ordered uuid7)
@@ -31,6 +37,22 @@ use Splicewire\Beam\Threads\Models\Thread;
  *   - `kind`      — provenance/hosting (interactive | embed_template | embed_session)
  *   - `mode`      — the render pivot (chat | board | forum)
  *   - `max_depth` — the reply-nesting cap (nullable: 1 flat, N capped, null unbounded)
+ *
+ * PLUS the 3 folded-in ALTER columns (all nullable, indexed, no DB foreign key — see each below):
+ *   - `selected_root_id`  — ROOT-message variant switching (TH-04 follow-up, Ruling B). A ROOT message
+ *     has no parent row to hold the edit/regen sibling pointer, so this names the currently selected
+ *     root variant (default = the newest root sibling); `linearConversation()` starts its root-walk here.
+ *   - `origin_message_id` — SPIN-OFF origin pointer (ADR-0176 §4, TH-06). The ONE thread-to-thread link
+ *     in the substrate: a "forum post → open a chat" spin-off spawns a NEW, independent thread carrying
+ *     a soft pointer back to the SOURCE message (in another thread) it was spun off from.
+ *   - `visibility`        — the `rushing/permission-cascade` HasVisibility resource-ACL tier (TH-07
+ *     header migration, phase 4, Fork 1b), read at the WHERE level by `BaseModelPolicy::scopeForUser`.
+ *     Must be a real, queryable column on the table the conversation model queries.
+ *
+ * Both `selected_root_id` and `origin_message_id` point into the messages table with NO hard FK,
+ * consistent with the message self-ref pointers (`parent_id`/`selected_child_id`/`reply_to_id`): they
+ * are repointed frequently, so a hard FK would fight insert order. Referential integrity is a model
+ * invariant.
  *
  * DERIVED FACTS ARE NOT COLUMNS (charter 02 §4): message count, participant count, and last-activity are
  * computed/cached model accessors — never stored — so they can never trigger a migration.
@@ -67,6 +89,12 @@ return new class extends Migration
             $table->string('kind')->nullable()->index();
             $table->string('mode')->nullable()->index();
             $table->integer('max_depth')->nullable();
+
+            // Folded-in ALTERs (squashed, no deployed data): root-variant switching, the spin-off origin
+            // pointer, and the HasVisibility resource-ACL column. See class docblock for each.
+            $table->uuid('selected_root_id')->nullable()->index();
+            $table->uuid('origin_message_id')->nullable()->index();
+            $table->string('visibility')->nullable()->index();
 
             $table->timestamps();
         });

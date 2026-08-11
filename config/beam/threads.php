@@ -24,19 +24,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Register migrations
-    |--------------------------------------------------------------------------
-    |
-    | When true, the package registers its ubiquitous `shared/` migration dir into
-    | both the central `migrate` and the `tenants:migrate` passes. Turn off if a host
-    | vendors the thread tables elsewhere. (No tables ship yet — this is the shell.)
-    |
-    */
-
-    'register_migrations' => true,
-
-    /*
-    |--------------------------------------------------------------------------
     | Table names
     |--------------------------------------------------------------------------
     |

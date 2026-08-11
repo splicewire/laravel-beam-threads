@@ -15,10 +15,16 @@ use Splicewire\Beam\Threads\Models\Message;
  * (`thread_id` FK) and carries an ordered `Segment[]` content array + a keyed `references` collection,
  * both FOLDED into the `payload` JSON column (the schema-typed source of truth).
  *
- * UBIQUITOUS (central + every tenant): this ONE `shared/` migration is registered into BOTH the central
- * `migrate` pass (loadMigrationsFrom) and Stancl's `tenants:migrate` pass (a `--path` push) by
- * {@see BeamThreadsServiceProvider::bootMigrations()}, so `beam_thread_messages` exists identically in the
- * central schema and every tenant schema.
+ * SQUASHED (no deployed data to preserve migration history for): this create absorbs the
+ * `add_authorship_and_lineage_to_thread_messages` ALTER, folding `participant_id`/`parent_id`/
+ * `selected_child_id`/`reply_to_id` (+ the `participant_id` foreign key) directly into the create.
+ * Column order is not load-bearing.
+ *
+ * Publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE) — re-stamped to the install
+ * moment via {@see BeamThreadsServiceProvider::configurePackage()}'s `->hasMigrations([...])` on
+ * `vendor:publish --tag=beam-threads-migrations`; the host runs it. UBIQUITOUS (central + every
+ * tenant): this ships to the SINGLE `database/migrations/shared/` destination, picked up in BOTH the
+ * central `migrate` pass and Stancl's tenant pass by beam-tenancy's `registerSharedMigrationsPath()`.
  *
  * NAME — the `beam_` PREFIX (transitional, PRD §2.4 / config note): the LEGACY tower `thread_messages`
  * table/model is still live until TH-07/08, so the new particle table is PREFIXED (`beam_thread_messages`)
@@ -28,8 +34,8 @@ use Splicewire\Beam\Threads\Models\Message;
  *
  * COLUMN SHAPE mirrors the beam particle table (`beam_particles`) — the particle machinery columns — but
  * WITHOUT the versioning-history columns (`head_version`): a message is NOT Versionable (immutable capture,
- * like {@see BeamSubmission}; edit/regen history is conversation-graph lineage in
- * TH-04, not linear snapshots). It KEEPS `schema_ref`/`schema_id`/`migration_status` for migrate-on-read.
+ * like {@see BeamSubmission}; edit/regen history is conversation-graph lineage, not linear snapshots). It
+ * KEEPS `schema_ref`/`schema_id`/`migration_status` for migrate-on-read.
  *   - `id` (uuid7 PK — HasUuids on the model produces a time-ordered uuid7)
  *   - `thread_id` (uuid FK → the threads table) — the sole aggregate parent (charter: messages reference
  *     `thread_id` and hydrate as a relation; they are NOT folded into the thread payload)
@@ -38,7 +44,28 @@ use Splicewire\Beam\Threads\Models\Message;
  *   - `migration_status` — current | pending | failed
  *   - `payload` (json)   — the schema-typed ThreadMessageData (content Segment[] + references)
  *   - `meta` (json)      — schema-form-agnostic derived/annotation facts
- *   - source provenance/lifecycle-tier columns (PersistsBeamParticle's `source_tier`/`fetched_at`)
+ *   - source provenance + lifecycle-tier columns (PersistsBeamParticle's `source_tier`/`fetched_at`)
+ *
+ * PLUS the folded-in AUTHORSHIP + conversation-graph LINEAGE columns (threads-substrate PRD §2.5,
+ * charter 03):
+ *   - `participant_id` NOT NULL — the SOLE authorship edge (PRD §2.5). `user_id` is never added: there
+ *     is NO dual source of truth — human/agent/system all resolve via `participant.actor`. FK → the
+ *     participants table.
+ *   - `parent_id` (self-FK, nullable) — LINEAGE tree edge (immutable rows, ONE parent, no merge). An edit
+ *     AND a regenerate each create a SIBLING (a new row sharing this `parent_id`). Semantics:
+ *     alternatives, show-ONE.
+ *   - `selected_child_id` (self-FK, nullable) — the SERVER-DURABLE active-path pointer. A root-walk
+ *     following `selected_child_id` yields the canonical LINEAR conversation; default = the newest
+ *     sibling. Server-durable is mandatory: the AI turn is assembled server-side from one specific path.
+ *   - `reply_to_id` (self-FK, nullable) — the intentional reply-nesting edge (show-ALL, capped by the
+ *     thread's `max_depth`). Distinct from `parent_id` (one selects, one shows-all); a reply may not
+ *     reuse `parent_id`'s edge — enforced in the model.
+ *
+ * The 3 self-referential columns (`parent_id`/`selected_child_id`/`reply_to_id`) are declared WITHOUT
+ * DB-level foreign-key constraints against their own table's rows — a self-referential FK to a
+ * not-yet-inserted sibling deadlocks insert ordering, and `selected_child_id` is repointed frequently.
+ * Referential integrity for the tree is a model invariant, not a DB constraint. `participant_id` DOES
+ * carry a real FK (a message is authored by an already-existing participant, so ordering is safe).
  *
  * NO `head_version` (NOT Versionable). NO AI-runtime columns (ADR-0174/0175): `assistant_id`/`model`/
  * `model_params`/`instructions_*`/`max_tool_steps` are ABSENT — they attach via the participant seam
@@ -48,10 +75,6 @@ use Splicewire\Beam\Threads\Models\Message;
  * SIDECAR, NOT COLUMNS (ADR-0174 §2): media (Spatie MediaLibrary) + embeddings (pgvector `morphMany`)
  * stay sidecar — they physically cannot live in JSON (file storage / vector index) — surfaced through the
  * `references` projection but stored OUTSIDE this table's payload, in the host's own media/embedding tables.
- *
- * NO LINEAGE COLUMNS YET (TH-04): `participant_id`, `parent_id`, `selected_child_id`, `reply_to_id`,
- * `origin_message_id`, `role` are the message-lineage / authorship concern of a LATER ticket; this ticket
- * lands the neutral content particle only. `thread_id` is the one edge this ticket needs.
  */
 return new class extends Migration
 {
@@ -64,6 +87,12 @@ return new class extends Migration
             // The sole aggregate parent — a message references its thread; it is NOT folded into the
             // thread payload. FK → the (prefixed) threads table. Indexed: messages are listed by thread.
             $table->uuid('thread_id')->index();
+
+            // Authorship + conversation-graph lineage (folded in, squashed — see class docblock).
+            $table->uuid('participant_id')->index();
+            $table->uuid('parent_id')->nullable()->index();
+            $table->uuid('selected_child_id')->nullable()->index();
+            $table->uuid('reply_to_id')->nullable()->index();
 
             // Particle machinery — the declared binding + migrate-on-read columns. NO `head_version`
             // (a message is NOT Versionable — immutable capture; lineage, not linear snapshots).
@@ -84,6 +113,13 @@ return new class extends Migration
             $table->foreign('thread_id')
                 ->references('id')
                 ->on(config('beam.threads.tables.threads', Beam::table('threads')))
+                ->cascadeOnDelete();
+
+            // Authorship FK → participants (the one self-graph constraint that is safe — a message is
+            // authored by an already-existing participant).
+            $table->foreign('participant_id')
+                ->references('id')
+                ->on(config('beam.threads.tables.participants', Beam::table('thread_participants')))
                 ->cascadeOnDelete();
         });
     }

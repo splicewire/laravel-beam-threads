@@ -3,7 +3,10 @@
 namespace Splicewire\Beam\Threads;
 
 use Illuminate\Database\Eloquent\Relations\Relation;
-use Illuminate\Support\ServiceProvider;
+use Spatie\LaravelPackageTools\Package;
+use Spatie\LaravelPackageTools\PackageServiceProvider;
+use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Threads\Doctor\BeamThreadsMigrationsAudit;
 use Splicewire\Beam\Threads\Models\Participant\ExternalParticipant;
 use Splicewire\Beam\Threads\Models\Participant\SystemParticipant;
 use Splicewire\Beam\Threads\Models\Participant\UserParticipant;
@@ -18,31 +21,67 @@ use Splicewire\Beam\Threads\Models\Participant\VisitorParticipant;
  * construction — a thread is a participant-agnostic conversation surface; no AI vendor, driver,
  * or model is referenced here.
  *
- * This is a SHELL: no models or tables ship yet (they land in later tickets). This provider
- * establishes the three durable seams a thread particle needs from boot zero:
+ * This provider establishes the three durable seams a thread particle needs from boot zero:
  *
  *  1. The participant MORPH MAP — the stable aliases a thread's participants/messages store on
  *     their `*_type` morph column, bound here so the concrete model class names can be renamed in
  *     later tickets without orphaning stored rows.
- *  2. The `database/migrations/shared/` residency — registered into BOTH the central `migrate`
- *     pass (loadMigrationsFrom) and the Stancl `tenants:migrate` pass (a `--path` push onto the
- *     tenancy migration parameters), because a thread's tables are ubiquitous (central + every
- *     tenant). Empty for now; the mechanism is wired so a later ticket only drops files in.
+ *  2. The `threads`/`thread_messages`/`thread_participants` tables — UBIQUITOUS (central + every
+ *     tenant), so they ship as PUBLISH-ONLY spatie/laravel-package-tools stubs (`runsMigrations`
+ *     stays FALSE, the estate convention) registered via `->hasMigrations([...])` in
+ *     {@see self::configurePackage()}, each declared under the SINGLE `shared/…` destination
+ *     rather than a duplicated flat+tenant pair. beam-threads never `loadMigrationsFrom`'s its own
+ *     vendor source; `vendor:publish --tag=beam-threads-migrations` re-stamps + sequences
+ *     timestamped copies into the HOST's `database/migrations/shared/` at install time.
+ *     beam-tenancy's `registerSharedMigrationsPath()` is what then runs that one directory in BOTH
+ *     the central `migrate` pass and Stancl's tenant pass — beam-threads composes that mechanism
+ *     purely by publishing into the same `shared/` destination it already registers, since the
+ *     method itself is protected on a different provider (mirrors tower's own conversion, 92919bb).
  *  3. The `config/beam/threads.php` table-prefix + driver seam (beam-family convention: config ships
  *     under `config/beam/` and merges under the `beam.threads` key, like beam.taxonomy / beam.ux).
  */
-class BeamThreadsServiceProvider extends ServiceProvider
+class BeamThreadsServiceProvider extends PackageServiceProvider
 {
-    public function register(): void
+    public function configurePackage(Package $package): void
+    {
+        $package
+            ->name('laravel-beam-threads')
+            // Publish-only .stub migrations (NOT ->discoversMigrations(), which loads at runtime).
+            // Each of the 3 particle tables is UBIQUITOUS (central + every tenant — "everything is
+            // shared by default"), so each publishes to the SINGLE `shared/…` destination, not a
+            // duplicated flat+tenant pair. beam-tenancy's registerSharedMigrationsPath() runs that
+            // one host directory in both the central `migrate` pass and Stancl's tenant pass.
+            // Declared order matters: `create_thread_messages_table` squashed in the (formerly
+            // separate) authorship/lineage ALTER, whose `participant_id` column carries a real FK to
+            // `thread_participants` — so participants must sort ahead of messages. package-tools'
+            // generateMigrationName timestamps each entry a second apart in listed order.
+            ->hasMigrations([
+                'shared/create_threads_table',
+                'shared/create_thread_participants_table',
+                'shared/create_thread_messages_table',
+            ]);
+    }
+
+    public function packageRegistered(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/beam/threads.php', 'beam.threads');
     }
 
-    public function boot(): void
+    public function packageBooted(): void
     {
         $this->bootParticipantMorphMap();
         $this->bootConfig();
-        $this->bootMigrations();
+
+        // beam-threads is itself an "operator" of the estate-wide publish-only stub migrations
+        // convention — self-registers the doctor/operator check on ITS OWN migrations, same as every
+        // other beam-* package registers it on theirs (guarded: a host predating the manifest still
+        // boots beam-threads fine).
+        if ($this->app->bound(BeamDoctorManifest::class)) {
+            $this->app->make(BeamDoctorManifest::class)->register(
+                'splicewire/laravel-beam-threads',
+                BeamThreadsMigrationsAudit::class,
+            );
+        }
     }
 
     /**
@@ -92,41 +131,6 @@ class BeamThreadsServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../config/beam/threads.php' => $this->app->configPath('beam/threads.php'),
             ], 'beam-threads-config');
-        }
-    }
-
-    /**
-     * Register the ubiquitous `shared/` migration dir into BOTH migration passes.
-     *
-     * A thread's tables live in BOTH the central and every tenant schema, so the ONE `shared/` dir is
-     * registered via BOTH mechanisms: `loadMigrationsFrom()` so the central `migrate` pass auto-discovers
-     * it, and a `--path` push onto Stancl's `tenancy.migration_parameters` so the `tenants:migrate` pass
-     * (which does NOT auto-discover) runs the same dir. Same source dir feeds both, so the shape is
-     * identical central + tenant. (Mirrors the beam-taxonomy shared/ residency idiom.)
-     *
-     * The dir is EMPTY today (a shell — no tables ship yet). The wiring is established so a later ticket
-     * that homes the thread tables only drops migration files into `shared/`; both passes pick them up
-     * with no further provider edit. Gated by `config('beam.threads.register_migrations', true)` so a host that
-     * vendors the tables elsewhere can turn it off.
-     */
-    protected function bootMigrations(): void
-    {
-        if (! config('beam.threads.register_migrations', true)) {
-            return;
-        }
-
-        $sharedDir = realpath(__DIR__.'/../database/migrations/shared')
-            ?: __DIR__.'/../database/migrations/shared';
-
-        // Central estate — auto-discovered by `migrate`.
-        $this->loadMigrationsFrom($sharedDir);
-
-        // Tenant estate — pushed onto Stancl's `--path` array (no auto-discovery). Same dir, so the
-        // table shape is identical central + tenant.
-        $paths = config('tenancy.migration_parameters.--path', []);
-
-        if (! in_array($sharedDir, $paths, true)) {
-            config()->push('tenancy.migration_parameters.--path', $sharedDir);
         }
     }
 }

@@ -4,11 +4,13 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 
 it('boots the provider and loads the threads config', function () {
     // The provider booted (registered by getPackageProviders), so its merged config is readable.
-    expect(config('threads.turn_driver'))->toBeNull();
-    expect(config('threads.tables'))->toBe([
-        'threads' => 'threads',
-        'messages' => 'thread_messages',
-        'participants' => 'thread_participants',
+    // Beam config keys use the product word, not the `splicewire` vendor (ADR-0092) — merged under
+    // `beam.threads`, not the bare `threads`.
+    expect(config('beam.threads.turn_driver'))->toBeNull();
+    expect(config('beam.threads.tables'))->toBe([
+        'threads' => 'beam_threads',
+        'messages' => 'beam_thread_messages',
+        'participants' => 'beam_thread_participants',
     ]);
 });
 
@@ -21,8 +23,10 @@ it('enforces the participant morph map with the AI-free vocabulary', function ()
     expect($map)->not->toHaveKey('assistant');
 });
 
-it('registers the shared migration dir into the tenant migrate pass', function () {
-    $paths = config('tenancy.migration_parameters.--path', []);
-
-    expect($paths)->toContain(realpath(__DIR__.'/../database/migrations/shared'));
-});
+// The former "registers the shared migration dir into the tenant migrate pass" assertion tested
+// BeamThreadsServiceProvider's OWN hand-rolled loadMigrationsFrom()+`--path` push — retired by the
+// publish-only .stub conversion. beam-threads no longer registers ANY migration path itself; its
+// `shared/` stubs publish into the HOST's `database/migrations/shared/`, and beam-tenancy's
+// registerSharedMigrationsPath() is what runs that host directory in both migration passes. That
+// mechanical "no loadMigrationsFrom() over its own source" invariant is now covered by
+// {@see \Splicewire\Beam\Threads\Tests\Doctor\BeamThreadsMigrationsAuditTest} instead.

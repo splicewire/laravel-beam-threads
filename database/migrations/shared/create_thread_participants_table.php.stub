@@ -11,11 +11,17 @@ use Splicewire\Beam\Threads\Models\Participant;
 /**
  * The `beam_thread_participants` membership table (threads-substrate PRD §2.6, charter 03) — the first-class
  * multi-participant join behind {@see Participant}. A thread has N members (humans AND an AI agent); a
- * message's sole author is a participant (TH-04's message-lineage migration adds `participant_id`).
+ * message's sole author is a participant (`beam_thread_messages`' `participant_id` column).
  *
- * UBIQUITOUS (central + every tenant): this ONE `shared/` migration is registered into BOTH the central
- * `migrate` pass and Stancl's `tenants:migrate` pass by {@see BeamThreadsServiceProvider::bootMigrations()},
- * so the table exists identically in the central schema and every tenant schema.
+ * No alters to fold — single create, unchanged from its original shape.
+ *
+ * Publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE) — re-stamped to the install
+ * moment via {@see BeamThreadsServiceProvider::configurePackage()}'s `->hasMigrations([...])` on
+ * `vendor:publish --tag=beam-threads-migrations`; the host runs it. UBIQUITOUS (central + every
+ * tenant): this ships to the SINGLE `database/migrations/shared/` destination, picked up in BOTH the
+ * central `migrate` pass and Stancl's tenant pass by beam-tenancy's `registerSharedMigrationsPath()`.
+ * Declared BEFORE `create_thread_messages_table` in `->hasMigrations([...])` — that create's squashed-in
+ * `participant_id` foreign key targets this table, so it must sort ahead.
  *
  * NAME — the `beam_` PREFIX (transitional, config note): the legacy tower estate still owns the unprefixed
  * names until TH-07, so the new table is prefixed (`beam_thread_participants`) to coexist. Resolved from
