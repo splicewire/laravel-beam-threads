@@ -112,9 +112,7 @@ return new class extends Migration
 
             $table->foreign('thread_id')
                 ->references('id')
-                // threads is the one beam particle that does NOT default through Beam::table()
-                // (TH-08 phase 5 B3 renamed it to the canonical unprefixed `threads`).
-                ->on(config('beam.threads.tables.threads', 'threads'))
+                ->on(config('beam.threads.tables.threads', Beam::table('threads')))
                 ->cascadeOnDelete();
 
             // Authorship FK → participants (the one self-graph constraint that is safe — a message is
