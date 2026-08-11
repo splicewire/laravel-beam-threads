@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Threads\BeamThreadsServiceProvider;
 use Splicewire\Beam\Threads\Models\Thread;
 
@@ -106,9 +107,6 @@ return new class extends Migration
 
     protected function table(): string
     {
-        // Unlike every other beam particle, this does NOT default through Beam::table(): TH-08
-        // phase 5 B3 renamed it to the canonical UNPREFIXED `threads` (tower's Thread model already
-        // defaults to this; see the sibling default in src/Models/Thread.php::getTable()).
-        return config('beam.threads.tables.threads', 'threads');
+        return config('beam.threads.tables.threads', Beam::table('threads'));
     }
 };

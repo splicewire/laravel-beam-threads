@@ -27,18 +27,16 @@ return [
     | Table names
     |--------------------------------------------------------------------------
     |
-    | `messages`/`participants` route through {@see Beam::table()} like every other beam
-    | particle (`beam_thread_messages` / `beam_thread_participants`) — the
-    | `beam.core.table_prefix` knob repoints them, alongside every other beam table, for a
-    | retrofit host. `threads` itself is the one exception: TH-08 phase 5 B3 renamed it to
-    | the canonical UNPREFIXED `threads` (tower's {@see \Splicewire\Tower\Models\Thread}
-    | already defaults to this), so its default here must match — not route through
-    | Beam::table(). Still individually overridable via env.
+    | The particle table-prefix seam. Defaults route through {@see Beam::table()} like
+    | every other beam particle (`beam_threads` / `beam_thread_messages` /
+    | `beam_thread_participants`) — the same single `beam.core.table_prefix` knob repoints
+    | them, alongside every other beam table, for a retrofit host. Still individually
+    | overridable via env.
     |
     */
 
     'tables' => [
-        'threads' => env('BEAM_THREADS_TABLE', 'threads'),
+        'threads' => env('BEAM_THREADS_TABLE', Beam::table('threads')),
         'messages' => env('BEAM_THREAD_MESSAGES_TABLE', Beam::table('thread_messages')),
         'participants' => env('BEAM_THREAD_PARTICIPANTS_TABLE', Beam::table('thread_participants')),
     ],

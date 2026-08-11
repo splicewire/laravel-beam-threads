@@ -7,10 +7,8 @@ it('boots the provider and loads the threads config', function () {
     // Beam config keys use the product word, not the `splicewire` vendor (ADR-0092) — merged under
     // `beam.threads`, not the bare `threads`.
     expect(config('beam.threads.turn_driver'))->toBeNull();
-    // `threads` itself is UNPREFIXED (TH-08 phase 5 B3 renamed it; tower's Thread model already
-    // defaults to this) — unlike messages/participants, which still route through Beam::table().
     expect(config('beam.threads.tables'))->toBe([
-        'threads' => 'threads',
+        'threads' => 'beam_threads',
         'messages' => 'beam_thread_messages',
         'participants' => 'beam_thread_participants',
     ]);

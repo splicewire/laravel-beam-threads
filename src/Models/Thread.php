@@ -113,15 +113,13 @@ class Thread extends Model implements Versionable
     }
 
     /**
-     * The thread table — the config table-prefix seam ({@see config('beam.threads.tables.threads')}).
-     * Unlike every other beam particle, this does NOT default through {@see Beam::table()}: TH-08
-     * phase 5 B3 renamed it to the canonical UNPREFIXED `threads` (tower's
-     * {@see \Splicewire\Tower\Models\Thread} already defaults to this). A property default cannot
-     * call config(), so it is resolved here.
+     * The thread table — the config table-prefix seam ({@see config('beam.threads.tables.threads')}),
+     * defaulting through {@see Beam::table()} (`beam_threads`) like every other beam particle. A
+     * property default cannot call config(), so it is resolved here.
      */
     public function getTable(): string
     {
-        return config('beam.threads.tables.threads', 'threads');
+        return config('beam.threads.tables.threads', Beam::table('threads'));
     }
 
     /**
