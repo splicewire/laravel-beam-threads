@@ -11,7 +11,7 @@
         "illuminate/support": "^11.0|^12.0|^13.0",
         "splicewire/laravel-beam": "*",
         "schemastud/laravel-data-schemas": "*",
-        "spatie/laravel-sluggable": "^3.5"
+        "spatie/laravel-sluggable": "^3.5|^4.0"
     },
     "require-dev": {
         "laravel/pint": "^1.0",
