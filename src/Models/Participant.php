@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use RuntimeException;
-use Splicewire\Beam\Beam;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Threads\Enums\ParticipantKind;
 use Splicewire\Beam\Threads\Enums\ParticipantRole;
 use Splicewire\Beam\Threads\Enums\ParticipantStatus;
@@ -70,13 +70,14 @@ class Participant extends Model
     }
 
     /**
-     * The participants table — the config table-prefix seam
-     * ({@see config('beam.threads.tables.participants')}, default `beam_thread_participants`). A property
-     * default cannot call config(), so it is resolved here (mirrors {@see Thread::getTable()}).
+     * The participants table — the table-prefix seam, default `beam_thread_participants`.
+     * {@see Beam::tableFor()} honours a host-declared `beam.threads.tables.participants` and
+     * otherwise applies `beam.core.table_prefix`. A property default cannot call config(), so it is
+     * resolved here (mirrors {@see Thread::getTable()}).
      */
     public function getTable(): string
     {
-        return config('beam.threads.tables.participants', Beam::table('thread_participants'));
+        return Beam::tableFor('beam.threads.tables.participants', 'thread_participants');
     }
 
     // -------------------------------------------------------------------------

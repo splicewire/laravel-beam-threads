@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use RuntimeException;
 use Rushing\Versioning\Concerns\ReconcilesPayloadOnRead;
 use Rushing\Versioning\Contracts\RecordReconciler;
-use Splicewire\Beam\Beam;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Threads\Data\ThreadMessageData;
@@ -99,13 +99,14 @@ class Message extends Model
     ];
 
     /**
-     * The message table — the config table-prefix seam ({@see config('beam.threads.tables.messages')},
-     * default `beam_thread_messages`). A property default cannot call config(), so it is resolved here,
-     * mirroring how {@see Thread} resolves its prefixed table name.
+     * The message table — the table-prefix seam, default `beam_thread_messages`.
+     * {@see Beam::tableFor()} honours a host-declared `beam.threads.tables.messages` and otherwise
+     * applies `beam.core.table_prefix`. A property default cannot call config(), so it is resolved
+     * here, mirroring how {@see Thread} resolves its prefixed table name.
      */
     public function getTable(): string
     {
-        return config('beam.threads.tables.messages', Beam::table('thread_messages'));
+        return Beam::tableFor('beam.threads.tables.messages', 'thread_messages');
     }
 
     /**

@@ -38,8 +38,10 @@ use Splicewire\Beam\Threads\Models\Participant\VisitorParticipant;
  *     the central `migrate` pass and Stancl's tenant pass — beam-threads composes that mechanism
  *     purely by publishing into the same `shared/` destination it already registers, since the
  *     method itself is protected on a different provider (mirrors tower's own conversion, 92919bb).
- *  3. The `config/beam/threads.php` table-prefix + driver seam (beam-family convention: config ships
- *     under `config/beam/` and merges under the `beam.threads` key, like beam.taxonomy / beam.ux).
+ *  3. The `config/beam/threads.php` driver seam (beam-family convention: config ships under
+ *     `config/beam/` and merges under the `beam.threads` key, like beam.taxonomy / beam.ux). It
+ *     declares NO table names — prefixing is beam core's job, applied in the models via
+ *     `Beam::tableFor()` (beam-facade ticket 17); a config file may not name the facade at all.
  */
 class BeamThreadsServiceProvider extends PackageServiceProvider
 {

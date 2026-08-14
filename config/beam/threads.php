@@ -1,6 +1,5 @@
 <?php
 
-use Splicewire\Beam\Beam;
 use Splicewire\Beam\Threads\Models\Participant\ExternalParticipant;
 use Splicewire\Beam\Threads\Models\Participant\SystemParticipant;
 use Splicewire\Beam\Threads\Models\Participant\UserParticipant;
@@ -24,22 +23,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Table names
+    | Table names — deliberately absent
     |--------------------------------------------------------------------------
     |
-    | The particle table-prefix seam. Defaults route through {@see Beam::table()} like
-    | every other beam particle (`beam_threads` / `beam_thread_messages` /
-    | `beam_thread_participants`) — the same single `beam.core.table_prefix` knob repoints
-    | them, alongside every other beam table, for a retrofit host. Still individually
-    | overridable via env.
+    | Prefixing is beam core's job: the models call `Beam::tableFor()` directly, which
+    | resolves `beam.threads.tables.<stem>` if a host declares it and otherwise falls back
+    | to the `beam.core.table_prefix` seam (`beam_threads` / `beam_thread_messages` /
+    | `beam_thread_participants`). The keys are NOT shipped here.
+    |
+    | This file must not name the Beam facade at all (beam-facade tickets 03 + 17). A facade
+    | call from a published `config/*.php` THROWS — config resolves before the container is
+    | booted, and `config:cache` throws too. Worse, the static form this replaced was silently
+    | ORDER-DEPENDENT: `beam/threads.php` sorts before `beam/core.php`, so `table_prefix` was
+    | not yet loaded and the lookup fell through to a hardcoded `beam_` — a retrofit host
+    | setting `''` got wrongly-prefixed thread tables with no error. Resolving in the models
+    | (after boot) removes both failure modes.
+    |
+    | A host that wants a per-table override publishes this config and ADDS the key, e.g.
+    | `'tables' => ['threads' => 'legacy_threads']` — a full table name, prefix included,
+    | since it is overriding the seam rather than feeding it.
     |
     */
-
-    'tables' => [
-        'threads' => env('BEAM_THREADS_TABLE', Beam::table('threads')),
-        'messages' => env('BEAM_THREAD_MESSAGES_TABLE', Beam::table('thread_messages')),
-        'participants' => env('BEAM_THREAD_PARTICIPANTS_TABLE', Beam::table('thread_participants')),
-    ],
 
     /*
     |--------------------------------------------------------------------------

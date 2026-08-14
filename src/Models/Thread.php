@@ -9,8 +9,8 @@ use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\Contracts\Versionable;
 use Spatie\Sluggable\HasSlug;
 use Spatie\Sluggable\SlugOptions;
-use Splicewire\Beam\Beam;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Threads\Data\ThreadData;
@@ -113,13 +113,15 @@ class Thread extends Model implements Versionable
     }
 
     /**
-     * The thread table — the config table-prefix seam ({@see config('beam.threads.tables.threads')}),
-     * defaulting through {@see Beam::table()} (`beam_threads`) like every other beam particle. A
+     * The thread table — the table-prefix seam, defaulting to `beam_threads` like every other beam
+     * particle. {@see Beam::tableFor()} honours a host-declared `beam.threads.tables.threads` and
+     * otherwise applies `beam.core.table_prefix`; the package config deliberately ships no such key
+     * (beam-facade ticket 17), because naming the facade from a published config file throws. A
      * property default cannot call config(), so it is resolved here.
      */
     public function getTable(): string
     {
-        return config('beam.threads.tables.threads', Beam::table('threads'));
+        return Beam::tableFor('beam.threads.tables.threads', 'threads');
     }
 
     /**
@@ -365,7 +367,7 @@ class Thread extends Model implements Versionable
      */
     protected function deepestReplyDepth(): int
     {
-        $table = config('beam.threads.tables.messages', Beam::table('thread_messages'));
+        $table = Beam::tableFor('beam.threads.tables.messages', 'thread_messages');
 
         if ($this->getKey() === null || ! $this->getConnection()->getSchemaBuilder()->hasTable($table)) {
             return 0;
@@ -414,7 +416,7 @@ class Thread extends Model implements Versionable
     public function messageCount(): int
     {
         return $this->derivedFactCache['message_count'] ??= $this->countRelated(
-            config('beam.threads.tables.messages', Beam::table('thread_messages')),
+            Beam::tableFor('beam.threads.tables.messages', 'thread_messages'),
         );
     }
 
@@ -425,7 +427,7 @@ class Thread extends Model implements Versionable
     public function participantCount(): int
     {
         return $this->derivedFactCache['participant_count'] ??= $this->countRelated(
-            config('beam.threads.tables.participants', Beam::table('thread_participants')),
+            Beam::tableFor('beam.threads.tables.participants', 'thread_participants'),
         );
     }
 
@@ -458,7 +460,7 @@ class Thread extends Model implements Versionable
 
     protected function computeLastActivityAt(): ?string
     {
-        $table = config('beam.threads.tables.messages', Beam::table('thread_messages'));
+        $table = Beam::tableFor('beam.threads.tables.messages', 'thread_messages');
 
         if ($this->getKey() !== null && $this->getConnection()->getSchemaBuilder()->hasTable($table)) {
             $latest = $this->getConnection()->table($table)
