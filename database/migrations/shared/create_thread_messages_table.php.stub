@@ -5,6 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamSubmission;
+use Splicewire\Beam\Schema\ConvergentTable;
 use Splicewire\Beam\Threads\BeamThreadsServiceProvider;
 use Splicewire\Beam\Threads\Data\ThreadMessageData;
 use Splicewire\Beam\Threads\Models\Message;
@@ -80,48 +81,50 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create($this->table(), function (Blueprint $table) {
-            // uuid7 primary key (the model's HasUuids produces a time-ordered uuid7).
-            $table->uuid('id')->primary();
+        ConvergentTable::named($this->table())
+            ->define(function (Blueprint $table) {
+                // uuid7 primary key (the model's HasUuids produces a time-ordered uuid7).
+                $table->uuid('id')->primary();
 
-            // The sole aggregate parent — a message references its thread; it is NOT folded into the
-            // thread payload. FK → the (prefixed) threads table. Indexed: messages are listed by thread.
-            $table->uuid('thread_id')->index();
+                // The sole aggregate parent — a message references its thread; it is NOT folded into the
+                // thread payload. FK → the (prefixed) threads table. Indexed: messages are listed by thread.
+                $table->uuid('thread_id')->index();
 
-            // Authorship + conversation-graph lineage (folded in, squashed — see class docblock).
-            $table->uuid('participant_id')->index();
-            $table->uuid('parent_id')->nullable()->index();
-            $table->uuid('selected_child_id')->nullable()->index();
-            $table->uuid('reply_to_id')->nullable()->index();
+                // Authorship + conversation-graph lineage (folded in, squashed — see class docblock).
+                $table->uuid('participant_id')->index();
+                $table->uuid('parent_id')->nullable()->index();
+                $table->uuid('selected_child_id')->nullable()->index();
+                $table->uuid('reply_to_id')->nullable()->index();
 
-            // Particle machinery — the declared binding + migrate-on-read columns. NO `head_version`
-            // (a message is NOT Versionable — immutable capture; lineage, not linear snapshots).
-            $table->string('schema_ref')->nullable()->index();
-            $table->string('schema_id')->nullable()->index();
-            $table->string('migration_status')->nullable()->index();
+                // Particle machinery — the declared binding + migrate-on-read columns. NO `head_version`
+                // (a message is NOT Versionable — immutable capture; lineage, not linear snapshots).
+                $table->string('schema_ref')->nullable()->index();
+                $table->string('schema_id')->nullable()->index();
+                $table->string('migration_status')->nullable()->index();
 
-            // The schema-typed content (Segment[] folded) + agnostic annotation facts.
-            $table->json('payload')->nullable();
-            $table->json('meta')->nullable();
+                // The schema-typed content (Segment[] folded) + agnostic annotation facts.
+                $table->json('payload')->nullable();
+                $table->json('meta')->nullable();
 
-            // Source provenance + lifecycle tier (PersistsBeamParticle casts these; mirror the particle table).
-            $table->string('source_tier')->default('local')->index();
-            $table->timestamp('fetched_at')->nullable();
+                // Source provenance + lifecycle tier (PersistsBeamParticle casts these; mirror the particle table).
+                $table->string('source_tier')->default('local')->index();
+                $table->timestamp('fetched_at')->nullable();
 
-            $table->timestamps();
+                $table->timestamps();
 
-            $table->foreign('thread_id')
-                ->references('id')
-                ->on(Beam::tableFor('beam.threads.tables.threads', 'threads'))
-                ->cascadeOnDelete();
+                $table->foreign('thread_id')
+                    ->references('id')
+                    ->on(Beam::tableFor('beam.threads.tables.threads', 'threads'))
+                    ->cascadeOnDelete();
 
-            // Authorship FK → participants (the one self-graph constraint that is safe — a message is
-            // authored by an already-existing participant).
-            $table->foreign('participant_id')
-                ->references('id')
-                ->on(Beam::tableFor('beam.threads.tables.participants', 'thread_participants'))
-                ->cascadeOnDelete();
-        });
+                // Authorship FK → participants (the one self-graph constraint that is safe — a message is
+                // authored by an already-existing participant).
+                $table->foreign('participant_id')
+                    ->references('id')
+                    ->on(Beam::tableFor('beam.threads.tables.participants', 'thread_participants'))
+                    ->cascadeOnDelete();
+            })
+            ->assert();
     }
 
     public function down(): void

@@ -4,6 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Schema\ConvergentTable;
 use Splicewire\Beam\Threads\BeamThreadsServiceProvider;
 use Splicewire\Beam\Threads\Models\Thread;
 
@@ -64,40 +65,42 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create($this->table(), function (Blueprint $table) {
-            // uuid7 primary key (the model's HasUuids produces a time-ordered uuid7).
-            $table->uuid('id')->primary();
+        ConvergentTable::named($this->table())
+            ->define(function (Blueprint $table) {
+                // uuid7 primary key (the model's HasUuids produces a time-ordered uuid7).
+                $table->uuid('id')->primary();
 
-            // Particle machinery — the declared binding + migrate-on-read/versioning columns.
-            $table->string('schema_ref')->nullable()->index();
-            $table->string('schema_id')->nullable()->index();
-            $table->string('migration_status')->nullable()->index();
-            $table->string('head_version')->nullable();
-            $table->json('payload')->nullable();
-            $table->json('meta')->nullable();
+                // Particle machinery — the declared binding + migrate-on-read/versioning columns.
+                $table->string('schema_ref')->nullable()->index();
+                $table->string('schema_id')->nullable()->index();
+                $table->string('migration_status')->nullable()->index();
+                $table->string('head_version')->nullable();
+                $table->json('payload')->nullable();
+                $table->json('meta')->nullable();
 
-            // Source provenance + lifecycle tier (PersistsBeamParticle casts these; mirror the particle table).
-            $table->string('source_tier')->default('local')->index();
-            $table->timestamp('fetched_at')->nullable();
+                // Source provenance + lifecycle tier (PersistsBeamParticle casts these; mirror the particle table).
+                $table->string('source_tier')->default('local')->index();
+                $table->timestamp('fetched_at')->nullable();
 
-            // Human-facing header identity (TH-07 header migration): the tower Thread's `title` moves onto the
-            // particle, and a `slug` is generated from it via spatie/laravel-sluggable's HasSlug on the model.
-            $table->string('title')->nullable();
-            $table->string('slug')->nullable()->index();
+                // Human-facing header identity (TH-07 header migration): the tower Thread's `title` moves onto the
+                // particle, and a `slug` is generated from it via spatie/laravel-sluggable's HasSlug on the model.
+                $table->string('title')->nullable();
+                $table->string('slug')->nullable()->index();
 
-            // Queryable projection of the payload's structural axes (mode-invariant; NO realm).
-            $table->string('kind')->nullable()->index();
-            $table->string('mode')->nullable()->index();
-            $table->integer('max_depth')->nullable();
+                // Queryable projection of the payload's structural axes (mode-invariant; NO realm).
+                $table->string('kind')->nullable()->index();
+                $table->string('mode')->nullable()->index();
+                $table->integer('max_depth')->nullable();
 
-            // Folded-in ALTERs (squashed, no deployed data): root-variant switching, the spin-off origin
-            // pointer, and the HasVisibility resource-ACL column. See class docblock for each.
-            $table->uuid('selected_root_id')->nullable()->index();
-            $table->uuid('origin_message_id')->nullable()->index();
-            $table->string('visibility')->nullable()->index();
+                // Folded-in ALTERs (squashed, no deployed data): root-variant switching, the spin-off origin
+                // pointer, and the HasVisibility resource-ACL column. See class docblock for each.
+                $table->uuid('selected_root_id')->nullable()->index();
+                $table->uuid('origin_message_id')->nullable()->index();
+                $table->string('visibility')->nullable()->index();
 
-            $table->timestamps();
-        });
+                $table->timestamps();
+            })
+            ->assert();
     }
 
     public function down(): void
