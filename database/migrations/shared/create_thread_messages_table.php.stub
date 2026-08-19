@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamSubmission;
-use Splicewire\Beam\Schema\ConvergentTable;
+use Rushing\SchemaConvergence\ConvergentTable;
 use Splicewire\Beam\Threads\BeamThreadsServiceProvider;
 use Splicewire\Beam\Threads\Data\ThreadMessageData;
 use Splicewire\Beam\Threads\Models\Message;

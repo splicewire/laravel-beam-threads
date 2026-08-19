@@ -12,7 +12,8 @@
         "splicewire/laravel-beam": "*",
         "schemastud/laravel-data-schemas": "*",
         "spatie/laravel-package-tools": "^1.16",
-        "spatie/laravel-sluggable": "^3.5|^4.0"
+        "spatie/laravel-sluggable": "^3.5|^4.0",
+        "rushing/laravel-schema-convergence": "*"
     },
     "require-dev": {
         "laravel/pint": "^1.0",
