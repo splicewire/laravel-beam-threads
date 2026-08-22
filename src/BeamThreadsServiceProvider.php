@@ -8,6 +8,7 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Threads\Doctor\BeamThreadsMigrationsAudit;
+use Splicewire\Beam\Threads\Models\Message;
 use Splicewire\Beam\Threads\Models\Participant\ExternalParticipant;
 use Splicewire\Beam\Threads\Models\Participant\SystemParticipant;
 use Splicewire\Beam\Threads\Models\Participant\UserParticipant;
@@ -138,6 +139,19 @@ class BeamThreadsServiceProvider extends PackageServiceProvider
             // NOTE: the AI-driver participant alias is intentionally NOT bound here — the tower tier binds
             // it in ticket 08. beam-threads is AI-free.
         ]);
+
+        // The message particle's own alias. {@see Message::getMorphClass()} has always PINNED
+        // 'thread_message', but nothing ever registered the reverse entry — a write-side-only
+        // half-registration. Unlike {@see Message}'s sibling {@see Thread}, there is no tier variant
+        // of Message anywhere in the estate (beam-threads is its sole owner), so the read side is
+        // unambiguously this package's to declare, and declaring it makes `morphTo()` and the
+        // `array_search($class, Relation::$morphMap)` reverse lookups resolve a token they
+        // previously missed.
+        //
+        // Kept in a separate call from the participant vocabulary above deliberately: that map is the
+        // closed set of participant KINDS and is config-repointable per alias; this is the package's
+        // own particle identity and is not a host seam.
+        Relation::morphMap(['thread_message' => Message::class]);
     }
 
     protected function bootConfig(): void

@@ -14,9 +14,14 @@ and it never reaches **up** onto the tower/satellite tiers that consume it.
 This is a scaffold (threads-substrate ticket TH-01). It ships **no models or tables yet** — those
 land in later tickets. What boots today:
 
-- **Participant morph map** — the closed vocabulary of participant kinds a thread admits
-  (`user`, `visitor`, `system`, `external`), enforced via `Relation::enforceMorphMap`. The
-  AI-driver participant alias is **intentionally absent** — the tower tier binds it (ticket 08).
+- **Participant morph map** — the vocabulary of participant kinds a thread admits (`user`,
+  `visitor`, `system`, `external`), registered **additively** via `Relation::morphMap` — never
+  `Relation::enforceMorphMap`. Global strict-morph mode would reject every class-string morph a
+  beam-composing host still has (`ClassMorphViolationException`); this package once used `enforce`
+  here and it took out tenant provisioning app-wide. The vocabulary stays honest by validation at
+  the write path, not by imposing strict morphing on the whole host. Each alias resolves through
+  `config('beam.threads.morph_map.*')` so a host can repoint it. The AI-driver participant alias is
+  **intentionally absent** — the tower tier binds it (ticket 08).
 - **`database/migrations/shared/`** — an (empty) ubiquitous migration dir wired into **both** the
   central `migrate` pass (`loadMigrationsFrom`) and the `tenants:migrate` pass (a `--path` push
   onto Stancl's tenancy migration parameters). A later ticket only drops files in.
