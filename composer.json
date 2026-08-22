@@ -75,5 +75,19 @@
     "scripts": {
         "pint": "@php -d memory_limit=512M vendor/bin/pint",
         "test": "vendor/bin/pest"
-    }
+    },
+    "repositories": [
+        {
+            "type": "git",
+            "url": "https://github.com/stephenr85/laravel-schema-convergence.git"
+        },
+        {
+            "type": "git",
+            "url": "https://github.com/schemastud/laravel-data-schemas.git"
+        },
+        {
+            "type": "git",
+            "url": "https://github.com/splicewire/laravel-beam.git"
+        }
+    ]
 }
