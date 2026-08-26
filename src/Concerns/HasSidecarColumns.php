@@ -2,6 +2,9 @@
 
 namespace Splicewire\Beam\Threads\Concerns;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Arr;
+use InvalidArgumentException;
 use Splicewire\Beam\Threads\Enums\ParticipantKind;
 use Splicewire\Beam\Threads\Enums\ParticipantRole;
 use Splicewire\Beam\Threads\Enums\ParticipantStatus;
@@ -74,7 +77,7 @@ trait HasSidecarColumns
     protected ?array $pendingOwner = null;
 
     /** The relation that owns a given sidecar column, or null when the column is not sidecar-bound. */
-    protected function sidecarRelationFor(string $key): ?string
+    public function sidecarRelationFor(string $key): ?string
     {
         foreach ($this->sidecarColumnMap() as $relation => $columns) {
             if (in_array($key, $columns, true)) {
@@ -138,6 +141,41 @@ trait HasSidecarColumns
         }
 
         return parent::getAttribute($key);
+    }
+
+    /**
+     * The QUERY twin of {@see getAttribute()}'s sidecar forwarding: narrow to rows whose sidecar column is
+     * one of `$values`.
+     *
+     * The read side is transparent and the query side is not, and that asymmetry is the trait's one sharp
+     * edge (api-surface-coherence 97). `$thread->agent_id` resolves through the companion; `where('agent_id',
+     * …)` is plain SQL against `beam_threads`, which has no such column, so it fatals with
+     * `column "agent_id" does not exist`. Every caller that reaches for SQL therefore has to know the column
+     * moved — unless it asks here instead, which is the point of this scope: the map stays the single owner
+     * of *which* companion holds *which* column, so the next sidecar move has one call site, not one per
+     * predicate.
+     *
+     * A column that is not sidecar-bound is a programming error and says so, rather than silently degrading
+     * to a `whereHas` on a relation that does not hold it.
+     *
+     * @param  array<int, mixed>|string  $values
+     */
+    public function scopeWhereSidecarIn(Builder $query, string $column, array|string $values): void
+    {
+        $relation = $this->sidecarRelationFor($column);
+
+        if ($relation === null) {
+            throw new InvalidArgumentException(sprintf(
+                '`%s` is not a sidecar column of %s — sidecarColumnMap() declares [%s].',
+                $column,
+                static::class,
+                implode(', ', array_merge(...array_values($this->sidecarColumnMap()))) ?: 'none',
+            ));
+        }
+
+        $query->whereHas($relation, function (Builder $companion) use ($column, $values): void {
+            $companion->whereIn($column, Arr::wrap($values));
+        });
     }
 
     /**
