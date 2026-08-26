@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Threads\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -737,6 +738,46 @@ class Message extends Model
 
                 return $text;
             },
+        );
+    }
+
+    /**
+     * The SQL twin of {@see content()} — match a keyword against the message's prose WITHOUT loading rows.
+     *
+     * `content` is a derived accessor, so there is no column to `where` on: the prose lives inside the
+     * `payload` JSON as an ordered `content: Segment[]`, and only `kind = 'text'` segments carry prose.
+     * This scope reproduces that same rule in the database — text segments only, so a reference marker or a
+     * tool-call extension never matches as if it were something the author wrote.
+     *
+     * It exists because the threads-substrate move (`thread_messages` → `beam_thread_messages`, TH-08) left
+     * consumers still writing `where('content', 'ILIKE', …)` against a column that stopped existing — see
+     * `Splicewire\Tower\Models\Thread::scopeKeywords`, which 500'd every `filter[keywords]` read on the
+     * threads index. A rename must ask what QUERIED the old name, not only what persisted it; the durable
+     * answer is that the package owning the payload shape owns the predicate over it, so no consumer has to
+     * know that prose is `payload->content[*].body`.
+     *
+     * Postgres-shaped by construction (`json_array_elements`, `ILIKE`) — as the scope it replaces already
+     * was. `payload` is a `json` column (not `jsonb`), and the `CASE`/`json_typeof` guard is load-bearing:
+     * `json_array_elements` raises on a NULL or non-array `content`, and Postgres does not promise to
+     * evaluate a sibling `AND` guard first.
+     */
+    public function scopeWhereContentLike(Builder $query, string $value): Builder
+    {
+        $table = $this->getTable();
+
+        return $query->whereRaw(
+            "exists (
+                select 1
+                from json_array_elements(
+                    case when json_typeof(\"{$table}\".\"payload\" -> 'content') = 'array'
+                         then \"{$table}\".\"payload\" -> 'content'
+                         else '[]'::json
+                    end
+                ) as segment
+                where segment ->> 'kind' = ?
+                  and segment ->> 'body' ilike ?
+            )",
+            [SegmentKind::Text->value, '%'.$value.'%'],
         );
     }
 
