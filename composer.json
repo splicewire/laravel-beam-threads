@@ -18,7 +18,7 @@
     "require-dev": {
         "laravel/pint": "^1.0",
         "orchestra/testbench": "^9.0|^10.0|^11.0",
-        "pestphp/pest": "^2.0|^3.0",
+        "pestphp/pest": "^4.0",
         "phpunit/phpunit": "^11.0|^12.0",
         "wikimedia/composer-merge-plugin": "^2.1"
     },
