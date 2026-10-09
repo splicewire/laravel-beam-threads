@@ -143,14 +143,14 @@ trait ConversationParticle
     public function toVersionSnapshot(): array
     {
         $content = [
-            'agent_id' => $this->agent_id,
+            'agentId' => $this->agent_id,
             'title' => $this->title,
             'model' => $this->model,
-            'max_tool_steps' => $this->max_tool_steps,
-            'model_params' => $this->model_params?->toArray(),
-            'instructions_provider' => $this->instructions_provider,
-            'instructions_text' => $this->instructions_text,
-            'instructions_schemas' => $this->instructions_schemas?->toArray(),
+            'maxToolSteps' => $this->max_tool_steps,
+            'modelParams' => $this->model_params?->toArray(),
+            'instructionsProvider' => $this->instructions_provider,
+            'instructionsText' => $this->instructions_text,
+            'instructionsSchemas' => $this->instructions_schemas?->toArray(),
             'tools' => $this->tools?->toArray(),
         ];
 
@@ -167,14 +167,14 @@ trait ConversationParticle
     public function restoreVersionSnapshot(array $snapshot): void
     {
         $this->fill([
-            'agent_id' => $snapshot['agent_id'] ?? null,
+            'agent_id' => $snapshot['agentId'] ?? null,
             'title' => $snapshot['title'] ?? null,
             'model' => $snapshot['model'] ?? null,
-            'max_tool_steps' => $snapshot['max_tool_steps'] ?? null,
-            'model_params' => $snapshot['model_params'] ?? null,
-            'instructions_provider' => $snapshot['instructions_provider'] ?? null,
-            'instructions_text' => $snapshot['instructions_text'] ?? null,
-            'instructions_schemas' => $snapshot['instructions_schemas'] ?? null,
+            'max_tool_steps' => $snapshot['maxToolSteps'] ?? null,
+            'model_params' => $snapshot['modelParams'] ?? null,
+            'instructions_provider' => $snapshot['instructionsProvider'] ?? null,
+            'instructions_text' => $snapshot['instructionsText'] ?? null,
+            'instructions_schemas' => $snapshot['instructionsSchemas'] ?? null,
             'tools' => $snapshot['tools'] ?? null,
         ])->save();
     }
