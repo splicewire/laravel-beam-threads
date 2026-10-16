@@ -1,4 +1,4 @@
-> You are in **rushing/laravel-beam-threads** — the generic multi-participant threads particle for the Beam family.
+> You are in **splicewire/laravel-beam-threads** — the generic multi-participant threads particle for the Beam family.
 
 A Laravel package providing a schema-typed, snapshot-versioned conversation thread on beam-core.
 Participant-agnostic and AI-free by construction — a thread is a passive conversation surface; no
