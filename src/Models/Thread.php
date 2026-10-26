@@ -59,7 +59,12 @@ use Splicewire\Beam\Write\ParticleWriter;
 class Thread extends Model implements Versionable
 {
     use HasSlug;
-    use PersistsBeamParticle;
+    // HasSlug (sluggable 4.0.5) and HasUuids (framework 13.38, through PersistsBeamParticle) both define
+    // resolveRouteBindingQuery, and without a choice PHP refuses to load the class. A thread binds by its uuid key with
+    // self-healing URLs off, so it takes HasUuids' (a malformed key is not found).
+    use PersistsBeamParticle {
+        PersistsBeamParticle::resolveRouteBindingQuery insteadof HasSlug;
+    }
     use ReconcilesPayloadOnRead;
     use VersionableTrait;
 
