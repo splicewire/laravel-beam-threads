@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Threads\Data;
 
+use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Threads\Enums\SegmentKind;
 
@@ -35,13 +36,15 @@ class Segment extends Data
     /**
      * @param  SegmentKind  $kind  the segment discriminator (neutral base: text | reference)
      * @param  string|null  $body  the text prose (for a `text` segment; plain or an optional blockdoc render)
-     * @param  string|null  $ref_id  the folded `references` record id this marker points at (for `reference`)
+     * @param  string|null  $refId  the folded `references` record id this marker points at (for `reference`),
+     *                              serialized as `ref_id`
      * @param  string|null  $label  the inline marker label (for `reference`, e.g. `[1]`)
      */
     public function __construct(
         public SegmentKind $kind,
         public ?string $body = null,
-        public ?string $ref_id = null,
+        #[MapName('ref_id')]
+        public ?string $refId = null,
         public ?string $label = null,
     ) {}
 
@@ -57,6 +60,6 @@ class Segment extends Data
      */
     public static function reference(string $refId, ?string $label = null): self
     {
-        return new self(kind: SegmentKind::Reference, ref_id: $refId, label: $label);
+        return new self(kind: SegmentKind::Reference, refId: $refId, label: $label);
     }
 }

@@ -17,15 +17,15 @@ use Splicewire\Beam\Threads\Enums\SegmentKind;
  *
  * The round-trip assertions matter for a separate reason: {@see \Splicewire\Beam\Threads\Turns\AssembledTurn}
  * rebuilds every segment from the raw persisted payload via `Segment::from($raw)`, so the serialized
- * key names ARE the storage contract. Renaming `ref_id` would silently null out every citation marker
- * in every stored message.
+ * key names ARE the storage contract. Changing the mapped `ref_id` key would silently null out every
+ * citation marker in every stored message.
  */
 it('builds a text segment carrying only prose', function () {
     $segment = Segment::text('Hello there');
 
     expect($segment->kind)->toBe(SegmentKind::Text);
     expect($segment->body)->toBe('Hello there');
-    expect($segment->ref_id)->toBeNull();
+    expect($segment->refId)->toBeNull();
     expect($segment->label)->toBeNull();
 });
 
@@ -33,9 +33,22 @@ it('builds a reference segment as a pure positional marker with no body', functi
     $segment = Segment::reference('ref-1', '[1]');
 
     expect($segment->kind)->toBe(SegmentKind::Reference);
-    expect($segment->ref_id)->toBe('ref-1');
+    expect($segment->refId)->toBe('ref-1');
     expect($segment->label)->toBe('[1]');
     expect($segment->body)->toBeNull();
+});
+
+it('maps the camelCase refId property to the stable ref_id wire key', function () {
+    $segment = Segment::from([
+        'kind' => 'reference',
+        'ref_id' => 'ref-wire',
+        'label' => '[wire]',
+    ]);
+
+    expect(property_exists($segment, 'refId'))->toBeTrue()
+        ->and($segment->refId)->toBe('ref-wire')
+        ->and($segment->toArray())->toHaveKey('ref_id', 'ref-wire')
+        ->and($segment->toArray())->not->toHaveKey('refId');
 });
 
 it('allows an unlabelled marker', function () {
@@ -55,7 +68,7 @@ it('round-trips a segment through the raw payload shape the turn assembler reads
 
         expect($rehydrated->kind)->toBe($original->kind);
         expect($rehydrated->body)->toBe($original->body);
-        expect($rehydrated->ref_id)->toBe($original->ref_id);
+        expect($rehydrated->refId)->toBe($original->refId);
         expect($rehydrated->label)->toBe($original->label);
     }
 });
@@ -85,11 +98,11 @@ it('links a marker to its record by id, which is the only edge between the two h
     $record = Reference::citation('ref-42', 'Source');
     $marker = Segment::reference($record->id, '[1]');
 
-    expect($marker->ref_id)->toBe($record->id);
+    expect($marker->refId)->toBe($record->id);
 
     // And the marker holds nothing the record holds — no uri, no type. The moment it did, a renderer
     // would have two disagreeing sources of truth for one citation.
-    expect(get_object_vars($marker))->toHaveKeys(['kind', 'body', 'ref_id', 'label']);
+    expect(get_object_vars($marker))->toHaveKeys(['kind', 'body', 'refId', 'label']);
     expect(get_object_vars($marker))->not->toHaveKey('uri');
 });
 

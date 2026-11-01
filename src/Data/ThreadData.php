@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Threads\Data;
 
 use Schemastud\DataSchemas\Contracts\SchemaIdentity;
+use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Threads\Enums\ThreadKind;
 use Splicewire\Beam\Threads\Enums\ThreadMode;
@@ -65,15 +66,16 @@ class ThreadData extends Data implements SchemaIdentity
     /**
      * @param  ThreadKind  $kind  provenance/hosting axis
      * @param  ThreadMode  $mode  the render pivot (chat|board|forum)
-     * @param  int|null  $max_depth  reply-nesting cap (1 flat, N capped, null unbounded); seeded from mode
-     *                               at creation, freely editable after
+     * @param  int|null  $maxDepth  reply-nesting cap, serialized as `max_depth` (1 flat, N capped, null
+     *                              unbounded); seeded from mode at creation, freely editable after
      * @param  array<string, mixed>  $config  neutral freeform config bag (mode-decoupled, AI-free)
      * @param  string|null  $membership  pointer to the thread's participant set (forward seam, 04)
      */
     public function __construct(
         public ThreadKind $kind,
         public ThreadMode $mode,
-        public ?int $max_depth = null,
+        #[MapName('max_depth')]
+        public ?int $maxDepth = null,
         public array $config = [],
         public ?string $membership = null,
     ) {}
