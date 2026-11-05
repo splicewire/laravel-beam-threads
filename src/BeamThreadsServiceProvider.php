@@ -7,7 +7,6 @@ use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Install\BeamInstallManifest;
-use Splicewire\Beam\Threads\Doctor\BeamThreadsMigrationsAudit;
 use Splicewire\Beam\Threads\Models\Message;
 use Splicewire\Beam\Threads\Models\Participant\ExternalParticipant;
 use Splicewire\Beam\Threads\Models\Participant\SystemParticipant;
@@ -93,9 +92,9 @@ class BeamThreadsServiceProvider extends PackageServiceProvider
         // other beam-* package registers it on theirs (guarded: a host predating the manifest still
         // boots beam-threads fine).
         if ($this->app->bound(BeamDoctorManifest::class)) {
-            $this->app->make(BeamDoctorManifest::class)->register(
+            $this->app->make(BeamDoctorManifest::class)->stubMigrations(
                 'splicewire/laravel-beam-threads',
-                BeamThreadsMigrationsAudit::class,
+                self::class,
             );
         }
     }

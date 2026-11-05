@@ -3,15 +3,15 @@
 namespace Splicewire\Beam\Threads\Tests\Doctor;
 
 use Splicewire\Beam\Doctor\Testing\AssertsStubMigrations;
-use Splicewire\Beam\Threads\Doctor\BeamThreadsMigrationsAudit;
+use Splicewire\Beam\Threads\BeamThreadsServiceProvider;
 use Splicewire\Beam\Threads\Tests\TestCase;
 
 /**
  * beam-threads' own operator check: its migrations must stay publish-only .stub files. Mirrors the
  * per-package `DeclaredTopologyTest` shape (`rushing/php-package-topology`'s `AssertsDeclaredTopology`) —
- * a thin test wrapping a shared engine, declaring only "which audit is mine."
+ * a thin test wrapping a shared engine, declaring only "which package is mine."
  */
-class BeamThreadsMigrationsAuditTest extends TestCase
+class BeamThreadsStubMigrationsTest extends TestCase
 {
     use AssertsStubMigrations;
 
@@ -20,8 +20,13 @@ class BeamThreadsMigrationsAuditTest extends TestCase
         $this->assertMigrationsArePublishOnlyStubs();
     }
 
-    protected function stubMigrationsAuditClass(): string
+    protected function stubMigrationsPackage(): ?string
     {
-        return BeamThreadsMigrationsAudit::class;
+        return 'splicewire/laravel-beam-threads';
+    }
+
+    protected function stubMigrationsProvider(): ?string
+    {
+        return BeamThreadsServiceProvider::class;
     }
 }

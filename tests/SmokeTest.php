@@ -64,4 +64,4 @@ it('enforces the participant morph map with the AI-free vocabulary', function ()
 // `shared/` stubs publish into the HOST's `database/migrations/shared/`, and beam-tenancy's
 // registerSharedMigrationsPath() is what runs that host directory in both migration passes. That
 // mechanical "no loadMigrationsFrom() over its own source" invariant is now covered by
-// {@see \Splicewire\Beam\Threads\Tests\Doctor\BeamThreadsMigrationsAuditTest} instead.
+// {@see \Splicewire\Beam\Threads\Tests\Doctor\BeamThreadsStubMigrationsTest} instead.
