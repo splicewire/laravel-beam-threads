@@ -5,8 +5,10 @@ namespace Splicewire\Beam\Threads;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
+use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Install\BeamInstallManifest;
+use Splicewire\Beam\Threads\Config\BeamThreadsSection;
 use Splicewire\Beam\Threads\Models\Message;
 use Splicewire\Beam\Threads\Models\Participant\ExternalParticipant;
 use Splicewire\Beam\Threads\Models\Participant\SystemParticipant;
@@ -68,6 +70,24 @@ class BeamThreadsServiceProvider extends PackageServiceProvider
     public function packageRegistered(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/beam/threads.php', 'beam.threads');
+        $this->declareConfigSection();
+    }
+
+    /**
+     * Declare the `beam.threads` Config Section (ADR-0245) with the registry, so the Config area and
+     * the section's JSON Schema describe this root's keys. The declaration lands on first resolve of
+     * the registry (`callAfterResolving`), never at every boot, and is kept separate from the
+     * `mergeConfigFrom` above so the config merge is unaffected if the registry is never resolved.
+     */
+    protected function declareConfigSection(): void
+    {
+        $this->callAfterResolving(ConfigSectionRegistry::class, static function (ConfigSectionRegistry $sections): void {
+            $sections->section(
+                BeamThreadsSection::class,
+                owner: 'splicewire/laravel-beam-threads',
+                packageFile: __DIR__.'/../config/beam/threads.php',
+            );
+        });
     }
 
     public function packageBooted(): void
