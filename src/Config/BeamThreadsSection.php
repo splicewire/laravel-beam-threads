@@ -24,7 +24,7 @@ class BeamThreadsSection extends ConfigSection
         public BeamThreadsMorphMapConfig $morph_map,
         #[Title('Sidecar models'), Description('The host model classes that store a message\'s media and embeddings, which stay outside the JSON payload and are surfaced through the message references projection.'), ConfigKey]
         public BeamThreadsSidecarConfig $sidecar,
-        #[Title('Table name overrides'), Description('Per-table name overrides keyed by table stem (threads, messages, participants). Each value is a full table name, prefix included, since it overrides the Beam::tableFor seam rather than feeding it. Null — the default — leaves every table resolving through the beam.core.table_prefix seam to its package name. This package ships this key as null (no overrides); a host that wants an override publishes the config and replaces the null with a map. Null means no overrides.'), ConfigKey, MapValues('string')]
-        public ?array $tables = null,
+        #[Title('Table name overrides'), Description('Per-table name overrides keyed by table stem (threads, messages, participants). Each value is a full table name, prefix included, since it overrides the Beam::tableFor seam rather than feeding it. An empty map — the default — leaves every table resolving through the beam.core.table_prefix seam to its package name. This package omits the key; a host that wants an override publishes the config and adds a map.'), ConfigKey, MapValues('string')]
+        public array $tables = [],
     ) {}
 }

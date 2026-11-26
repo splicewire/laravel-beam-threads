@@ -25,14 +25,24 @@ it('covers a host-supplied table-name override map', function () {
         'tables' => ['threads' => 'legacy_threads'],
     ]);
 
-    expect(ConfigSectionCoverage::uncovered(BeamThreadsSection::class, $values))->toBe([]);
+    expect(ConfigSectionCoverage::uncovered(BeamThreadsSection::class, $values))->toBe([])
+        ->and(app(AcceptanceGate::class)->accepts($values, app(ConfigSectionSchema::class)->for(BeamThreadsSection::class)))->toBeTrue();
 });
 
 it('validates the package default config against the section schema (the host-audit check)', function () {
     // The same check ConfigSectionCoverageAudit runs at boot: the package's own default config
-    // must satisfy the generated section schema (AcceptanceGate -> opis). `tables` ships as null,
-    // which the nullable schema accepts; a non-nullable required key absent here would fail.
+    // must satisfy the generated section schema (AcceptanceGate -> opis). The omitted `tables`
+    // key is optional because the section supplies an empty-map default.
     $schema = app(ConfigSectionSchema::class)->for(BeamThreadsSection::class);
 
     expect(app(AcceptanceGate::class)->accepts(config('beam.threads'), $schema))->toBeTrue();
+});
+
+it('defaults the table-name section map without shipping a placeholder', function () {
+    $defaults = require __DIR__.'/../../config/beam/threads.php';
+    $parameter = new ReflectionParameter([BeamThreadsSection::class, '__construct'], 'tables');
+
+    expect($defaults)->not->toHaveKey('tables')
+        ->and($parameter->getDefaultValue())->toBe([])
+        ->and($parameter->allowsNull())->toBeFalse();
 });
