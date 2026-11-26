@@ -65,3 +65,11 @@ it('enforces the participant morph map with the AI-free vocabulary', function ()
 // registerSharedMigrationsPath() is what runs that host directory in both migration passes. That
 // mechanical "no loadMigrationsFrom() over its own source" invariant is now covered by
 // {@see \Splicewire\Beam\Threads\Tests\Doctor\BeamThreadsStubMigrationsTest} instead.
+
+it('keeps table-name fallbacks for an explicitly null legacy override map', function () {
+    config()->set('beam.threads.tables', null);
+
+    expect((new Thread)->getTable())->toBe('beam_threads');
+    expect((new Message)->getTable())->toBe('beam_thread_messages');
+    expect((new Participant)->getTable())->toBe('beam_thread_participants');
+});

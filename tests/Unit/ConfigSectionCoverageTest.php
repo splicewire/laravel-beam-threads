@@ -25,8 +25,8 @@ it('covers a host-supplied table-name override map', function () {
         'tables' => ['threads' => 'legacy_threads'],
     ]);
 
-    expect(ConfigSectionCoverage::uncovered(BeamThreadsSection::class, $values))->toBe([])
-        ->and(app(AcceptanceGate::class)->accepts($values, app(ConfigSectionSchema::class)->for(BeamThreadsSection::class)))->toBeTrue();
+    expect(ConfigSectionCoverage::uncovered(BeamThreadsSection::class, $values))->toBe([]);
+    expect(app(AcceptanceGate::class)->accepts($values, app(ConfigSectionSchema::class)->for(BeamThreadsSection::class)))->toBeTrue();
 });
 
 it('validates the package default config against the section schema (the host-audit check)', function () {
@@ -35,7 +35,7 @@ it('validates the package default config against the section schema (the host-au
     // key is optional because the section supplies an empty-map default.
     $schema = app(ConfigSectionSchema::class)->for(BeamThreadsSection::class);
 
-    expect(app(AcceptanceGate::class)->accepts(config('beam.threads'), $schema))->toBeTrue();
+    $this->assertTrue(app(AcceptanceGate::class)->accepts(config('beam.threads'), $schema), json_encode($schema, JSON_THROW_ON_ERROR));
 });
 
 it('defaults the table-name section map without shipping a placeholder', function () {
@@ -44,5 +44,13 @@ it('defaults the table-name section map without shipping a placeholder', functio
 
     expect($defaults)->not->toHaveKey('tables')
         ->and($parameter->getDefaultValue())->toBe([])
-        ->and($parameter->allowsNull())->toBeFalse();
+        ->and($parameter->allowsNull())->toBeTrue();
+});
+
+it('accepts a legacy published null map without uncovered keys', function () {
+    $values = array_merge(config('beam.threads'), ['tables' => null]);
+    $schema = app(ConfigSectionSchema::class)->for(BeamThreadsSection::class);
+
+    $this->assertTrue(app(AcceptanceGate::class)->accepts($values, $schema), json_encode($schema, JSON_THROW_ON_ERROR));
+    expect(ConfigSectionCoverage::uncovered(BeamThreadsSection::class, $values))->toBe([]);
 });
